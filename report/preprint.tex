@@ -57,7 +57,9 @@ points) is eliminated by the relative-novelty gate on learnable streams ($95.0\%
 without rotation) and reverses into a $+2.5$ to $+6.5$ point \emph{gain} on harder data
 (split CIFAR-10), where the full ordering of methods transfers. We further show that
 surprise-triggered waking replay fails at any volume, that the trigger must be homeostatic, and
-that the residual advantage of offline nights is confined to very small episodic buffers. We
+that the residual advantage of offline nights is confined to very small episodic buffers on
+narrow substrates, and that sleep-anchored synaptic down-selection helps precisely where an
+offline window exists. We
 provide exactness proofs for the isolation rule and release all code, checkpoints and diagnostics.
 \end{abstract}
 
@@ -157,8 +159,11 @@ Sequential axis: split-MNIST (five tasks of two classes, $5$ epochs per task) an
 geometry). Static axis: the identical learner and budgets on the i.i.d.\ shuffle. Waking batches
 have $n_w=16$ samples; the episodic buffer holds $K\in\{200,1000\}$ raw samples under reservoir
 writing. All numbers are mean $\pm$ s.d.\ over three seeds unless marked otherwise.
-\pending{split CIFAR-10 with a frozen V1-like random-patch feature front-end (1024-D, linear
-probe $\approx49\%$) is running; all cifar-feature numbers below are placeholders.}
+A third regime uses a frozen V1-like feature front-end for CIFAR-10: $256$ normalised random
+$6{\times}6{\times}3$ patches sampled from the training images act as fixed filters (stride $2$,
+rectification against the per-filter mean response, quadrant average pooling; 1024-D, linear
+probe $\approx49\%$). Nothing in the front-end is learned; the cortex under study receives it as
+its retina.
 
 \paragraph{Architecture.}
 $d$--$512$--$256$--$C$ with \kwta{} sparsity $5\%$ on the hidden layers ($d$--$256$--$128$--$C$ at
@@ -301,9 +306,18 @@ adaptation signal \citep{hasselmo2006}). Absolute thresholds provably cannot ser
 converged error of a ten-class i.i.d.\ stream exceeds any level a two-class task dips under, and
 we observe exactly this failure (gate open $100\%$ of the time on static MNIST, $95\%$ on CIFAR,
 for any threshold that behaves on split-MNIST).
-\pending{a progress-keyed variant --- rotate while $\bar e_f \ge \gamma\, e_0$ (error still a
-$\gamma$ fraction of its chance level $e_0$) OR condition \eqref{eq:nov} --- is running; it is
-designed to keep rotation on for never-converging streams where rotation is beneficial.}
+Because rotation is \emph{beneficial} on streams the learner never masters
+(Section~\ref{sec:results}), the final gate adds an ``unmastered'' clause: with $e_0$ the mean
+error over the first $20$ batches (a chance-level estimate), rotation runs while
+\begin{equation}
+\bar e_f(t) \;\ge\; \beta\,\bar e_s(t)
+\qquad\text{or}\qquad
+\bar e_f(t) \;\ge\; \gamma\, e_0,
+\qquad \gamma\approx0.5 .
+\label{eq:prog}
+\end{equation}
+The first clause opens the gate at task switches, the second keeps it open on any stream whose
+error remains a substantial fraction of chance --- both scale-free.
 
 \begin{figure}[t]
 \centering
@@ -445,9 +459,13 @@ novelty} gate \eqref{eq:nov} removes the price at no sequential cost on MNIST: s
 $\mathbf{95.0\pm0.4}$ (rotation on $1.4$--$17\%$ of batches), sequential $90.3\pm0.4$
 ($\beta{=}1.5$) or $90.9\pm0.6$ ($\beta{=}1.1$). On split CIFAR-10 the price \emph{reverses}:
 rotation gains $+2.5$ (refractory) to $+6.5$ points (pressure-selected rest) on the static axis
---- forced rotation acts as a regulariser in the underfit regime --- and the novelty gate
-correctly stays open ($\ge95\%$) there under the progress-keyed variant.
-\pending{final 3-seed numbers for the progress-keyed gate on all four axes (running).}
+--- forced rotation acts as a regulariser in the underfit regime --- while the pure novelty gate
+\eqref{eq:nov} \emph{misfires} there (sequential $19.1\pm1.1$: fast/slow $\to1$ on a stream that
+never becomes predictable, so rotation shuts off exactly where it helps). The progress-keyed gate
+\eqref{eq:prog} resolves this with one setting across all four regimes: split CIFAR-10 sequential
+$27.2\pm0.7$ and static $25.3\pm1.0$ (both $=$ always-on rotation), split-MNIST $90.4\pm0.9$,
+i.i.d.\ MNIST $94.3\pm0.2$ at $\gamma{=}0.5$ --- retaining a residual $0.7$-point static cost
+relative to the pure novelty gate on easy streams, the price of the unmastered clause.
 
 \begin{figure}[t]
 \centering
@@ -462,21 +480,27 @@ Right: on split CIFAR-10 (grayscale) rotation is a gain on \emph{both} axes.}
 On split CIFAR-10 (grayscale, same protocol) the ordering transfers and widens: refractory local
 sleep $27.1\pm1.7$ $>$ BP+ER $25.1\pm1.5$ $>$ offline night $23.8\pm1.2$ $>$ unmasked ER
 $20.9\pm1.8$ $>$ no buffer $16.0$--$16.5$, despite task-active code overlap of $0.9$--$0.98$.
-\pending{the same grid on the V1-like feature front-end; first seeds show the ordering holds for
-the local variants (refractory $37$, unmasked $31$, night $31$) but BP+ER strengthens markedly
-($43$) --- to be reported honestly as the regime where the local learner loses the lead.}
+On the V1-like feature front-end the ordering among local variants persists and widens
+(refractory $37.0\pm0.4$ $>$ progress-gated $36.0\pm0.6$ $>$ offline night $31.7\pm1.5$
+$\approx$ unmasked $30.8\pm0.6$ $\gg$ no buffer $17.0$; static rotation gain $+3.9$:
+$35.6\pm1.3$ vs.\ $31.7\pm3.6$), but BP+ER reaches $42.6\pm0.5$ and overtakes the local
+learner --- the reverse of the raw-pixel result. The local-sleep advantage over backpropagation
+with replay is therefore regime-specific (local rules, sparse connectivity, raw inputs), while
+the advantage over \emph{other local schedules} (nights, unmasked ER) is robust across all three
+input regimes.
 
 \subsection{Small buffers: what the night still buys}
-At $K{=}200$ the night keeps an edge (Figure~\ref{fig:k200}). Replay diversity is the main lever
-during wake: noise $\sigma{=}0.2$ on replayed samples plus pressure bursts lifts local sleep from
-$81.8\pm2.9$ to $84.3\pm1.0$ (forgetting $0.08$), but the night reaches $86.9$. Mechanistically:
-(i) \emph{unmasked} waking replay is far worse ($72.9$) --- isolation is a benefit, not the cost;
-(ii) the same noise \emph{hurts} the offline night ($85.8\to78.1$) --- diversity is specifically a
-wake-side lever; (iii) a night added on top of noisy local sleep recovers little.
-The remaining gap is the offline window itself: with $200$ samples carrying ten classes, every
-waking batch between replays erodes the buffer's trace, and only interference-free consolidation
-locks it. Local sleep replaces the night only when the buffer is rich enough ($K\gtrsim10^3$) to
-sustain continuous re-writing. \pending{third seeds for three of the seven bars.}
+At $K{=}200$ the night appeared to keep a $\sim$2.6-point edge in our earlier phases; the final
+triangulation (Figure~\ref{fig:k200}) dissolves most of it into a substrate mismatch. On the
+\emph{same} $512$--$256$/$5\%$ substrate, the night reaches $84.0\pm3.4$ while noisy
+pressure-burst local sleep reaches $84.3\pm1.0$ and local$+$night $84.8\pm0.9$ --- parity, with
+three-fold smaller variance for the wake-side scheme. The strongest tiny-buffer number remains
+the narrower $256$--$128$/$10\%$ night ($86.9$), so the offline window retains an advantage only
+in combination with narrow substrates. The mechanism results stand: replay diversity (noise
+$\sigma{=}0.2$) is specifically a wake-side lever --- it lifts every local scheme
+($81.8\pm2.9\to84.3\pm1.0$) and \emph{hurts} the night ($84.0\to81.8\pm3.2$) --- and
+\emph{unmasked} waking replay collapses ($71.0\pm1.7$): isolation is a benefit, not a cost, at
+every buffer size we tested.
 
 \begin{figure}[t]
 \centering
@@ -493,15 +517,27 @@ event-driven rate inference ($4.3\times$); the rotation-trained network loses ac
 $T_s{=}8$ ($90.4$ at $16$), unlike its non-rotated control ($94.1$) --- an open interaction
 between rotation-shaped weights and threshold calibration.
 
+\subsection{Sleep-anchored down-selection}
+Motivated by the synaptic homeostasis hypothesis \citep{tononi2014}, we anchored structural
+plasticity (prune the weakest fraction of live synapses, regrow the same number with a distance
+bias) to consolidation windows, using the Kolen--Pollack decay of \eqref{eq:kp} as the natural
+weakening force on unreplayed synapses. The verdict splits three ways at matched turnover
+($\approx5\%$ per epoch). On the \emph{continuous} local-sleep substrate pruning is free
+(sleep-anchored $90.9\pm0.2$, clocked $90.6\pm0.4$, none $90.8\pm0.1$). On the pure
+\emph{night} substrate, pruning immediately after each night helps substantially
+($87.2\pm3.8$ vs.\ $84.1\pm1.3$) --- offline down-selection rescues the wide-sparse night.
+On the \emph{episodic-burst} substrate pruning is harmful ($84.6\pm0.5$ burst-anchored,
+$86.6\pm1.3$ clocked, vs.\ $89.9\pm0.1$ without): when replay is rare, synapses are cut before
+enough consolidation events have protected them. Down-selection, like replay itself, needs
+either density or an offline window.
+
 \subsection{Negative results}
 For the record, the following were falsified under matched budgets: a frozen dentate-gyrus-style
 sparse expansion front-end (input decorrelation does not propagate through learned \kwta{} layers:
 task overlap at the input drops $0.79\to0.18$ yet every downstream metric worsens by $3$--$11$
 points); generative (REM) replay as a substitute for episodic samples; margin-based reverse
 learning; surprise-gated memory \emph{writing}; multiplicative burst coding; absolute-threshold
-rotation gates. \pending{sleep-anchored structural plasticity (prune/regrow after consolidation
-windows vs.\ a clock schedule; Tononi--Cirelli down-selection) is running --- subsection to be
-added.}
+rotation gates; pruning anchored to sparse replay bursts (above).
 
 % ---------------------------------------------------------------- 6
 \section{Discussion}
@@ -528,21 +564,21 @@ under chronic underfitting) may bear on why local sleep in vivo both impairs beh
 
 \paragraph{Honest limits.}
 All results are at MLP scale on MNIST/CIFAR variants with three seeds; BP+ER overtakes the local
-learner on feature-based CIFAR (pending); the novelty gate needs its progress-keyed extension for
-never-converging streams; and the novelty claims rest on our own literature search (August 2026).
+learner on feature-based CIFAR, bounding the regime of our headline comparison; the progress
+gate keeps a $0.7$-point static residue; and the novelty claims rest on our own literature
+search (August 2026).
 
 % ---------------------------------------------------------------- 7
 \section{Future Work}
 \label{sec:future}
 
-(i) The progress-keyed rotation gate unifying converging and non-converging regimes
-(\pending{running}); (ii) sleep-anchored synaptic down-selection --- pruning immediately after
-consolidation windows so that replay-potentiated synapses are protected and KP-decayed ones are
-removed (\pending{running}); (iii) feature front-ends and convolutional stacks to test the
-mechanism beyond MLPs; (iv) closing the small-buffer gap with wake-compatible interference
-shields; (v) a throughput theory of the isolated channel predicting the required replay cadence
-from $\rho_\ell$, code overlap and the interference rate; (vi) the rotation--spiking calibration
-interaction.
+(i) Explaining why backpropagation with replay overtakes the local learner specifically on
+feature representations (dense connectivity, per-synapse adaptivity, or the learning rule
+itself); (ii) removing the residual $0.7$-point static cost of the progress-keyed gate;
+(iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
+(iv) convolutional and deeper stacks; (v) a throughput theory of the isolated channel predicting
+the required replay cadence from $\rho_\ell$, code overlap and the interference rate;
+(vi) the rotation--spiking calibration interaction beyond $T_s{=}8$.
 
 % ---------------------------------------------------------------- 8
 \section{Conclusion}

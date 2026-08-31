@@ -331,6 +331,62 @@ CONFIGS = {
                             batch_wake=16, cadence=1, batch_replay=16, mask="refractory", hidden=(512, 256), active_frac=0.05),
     "cif_static_rp4": dict(model="ctx", dataset="cifar", static=True, schedule="local", buffer=1000, policy="random",
                            batch_wake=16, cadence=1, batch_replay=16, mask="refr_press", theta_r=4.0, hidden=(512, 256), active_frac=0.05),
+    # ---- phase 11A: progress-keyed gate (novelty OR unmastered), one setting for all regimes
+    **{f"{pre}g11_prog{tag}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                          batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                          mask="refr_prog", gamma_p=gp, **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for tag, gp in (("03", 0.3), ("05", 0.5))},
+    **{f"cif_prog{tag}_{kind}": dict(model="ctx", dataset="cifar", buffer=1000, policy="random", schedule="local",
+                                     batch_wake=16, cadence=1, batch_replay=16, mask="refr_prog", gamma_p=gp,
+                                     hidden=(512, 256), active_frac=0.05, **({"static": True} if kind == "static" else {}))
+       for tag, gp in (("03", 0.3),)
+       for kind in ("br16", "static")},
+    # ---- phase 11B: CIFAR with a frozen V1-like patch-feature front-end (dataset "cifarf")
+    **{f"cfeat_{name}": dict(model="ctx", dataset="cifarf", buffer=1000, policy="random",
+                             hidden=(512, 256), active_frac=0.05, **kw)
+       for name, kw in {
+           "night": dict(replay="nrem"),
+           "refr_br16": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16, mask="refractory"),
+           "none_br16": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16, mask="none"),
+           "prog03_br16": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16, mask="refr_prog", gamma_p=0.3),
+       }.items()},
+    "cfeat_bp_er_1000": dict(model="bp", dataset="cifarf", buffer=1000, policy="random", replay="er"),
+    "cfeat_bp_none": dict(model="bp", dataset="cifarf"),
+    "cfeat_ctx_none": dict(model="ctx", dataset="cifarf"),
+    "cfeat_static_none": dict(model="ctx", dataset="cifarf", static=True, schedule="local", buffer=1000, policy="random",
+                              batch_wake=16, cadence=1, batch_replay=16, mask="none", hidden=(512, 256), active_frac=0.05),
+    "cfeat_static_refr": dict(model="ctx", dataset="cifarf", static=True, schedule="local", buffer=1000, policy="random",
+                              batch_wake=16, cadence=1, batch_replay=16, mask="refractory", hidden=(512, 256), active_frac=0.05),
+    "cfeat_static_prog03": dict(model="ctx", dataset="cifarf", static=True, schedule="local", buffer=1000, policy="random",
+                                batch_wake=16, cadence=1, batch_replay=16, mask="refr_prog", gamma_p=0.3, hidden=(512, 256), active_frac=0.05),
+    # ---- phase 11C: where do the night's last 2.6 points at K=200 come from?
+    # E1 isolation cost: unmasked trickle with the 10B knobs; E2 offline window: night on top of
+    # the local trickle (both noisy); E3 fairness: the night itself with noisy replay.
+    "g11_k200_none_g1_n02": dict(model="ctx", schedule="local", buffer=200, policy="random", batch_wake=16,
+                                 mask="none", cadence=1, batch_replay=16, nrem_gain=1.0, replay_noise=0.2,
+                                 hidden=(512, 256), active_frac=0.05),
+    "g11_k200_combo_n02": dict(model="ctx", schedule="local", buffer=200, policy="random", batch_wake=16,
+                               mask="refractory", cadence=1, batch_replay=16, replay_noise=0.2, night=True,
+                               hidden=(512, 256), active_frac=0.05),
+    "g11_k200_night_n02": dict(model="ctx", buffer=200, policy="random", replay="nrem", replay_noise=0.2,
+                               hidden=(512, 256), active_frac=0.05),
+    "g11_k200_night": dict(model="ctx", buffer=200, policy="random", replay="nrem",
+                           hidden=(512, 256), active_frac=0.05),
+    # ---- phase 11D: down-selection -- prune/regrow anchored to sleep windows vs the clock
+    **{f"sp11_{name}": dict(model="ctx", schedule="local", buffer=1000, policy="random", batch_wake=16,
+                            hidden=(512, 256), active_frac=0.05, mask="refractory", cadence=1, batch_replay=16, **kw)
+       for name, kw in {
+           "refr_loc": dict(sp="local", sp_every=128, sp_rho=0.0085),   # after consolidation windows
+           "refr_ep": dict(sp="epoch", sp_rho=0.05),                    # clock control, equal budget
+           "pb_loc": dict(gate="pressure", theta=6.4, burst=16, sp="local", sp_every=16, sp_rho=0.007),
+           "pb_ep": dict(gate="pressure", theta=6.4, burst=16, sp="epoch", sp_rho=0.05),
+       }.items()},
+    "sp11_night": dict(model="ctx", buffer=1000, policy="random", replay="nrem", hidden=(512, 256),
+                       active_frac=0.05, sp="night", sp_rho=0.05),
+    "static_sp11_refr_loc": dict(model="ctx", schedule="local", static=True, buffer=1000, policy="random",
+                                 batch_wake=16, hidden=(512, 256), active_frac=0.05, mask="refractory",
+                                 cadence=1, batch_replay=16, sp="local", sp_every=128, sp_rho=0.0085),
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -371,9 +427,67 @@ def load_cifar10_gray():
     return (Xtr - mu) / sd, ytr, (Xte - mu) / sd, yte
 
 
+def _cifar_rgb():
+    """Raw CIFAR-10 as float32 (N, 3, 32, 32) in [0, 1]."""
+    import pickle as pk
+    import tarfile
+    with tarfile.open(os.path.join(CIFAR_DIR, "cifar-10-python.tar.gz")) as tf:
+        def batch(name):
+            d = pk.load(tf.extractfile(f"cifar-10-batches-py/{name}"), encoding="bytes")
+            return d[b"data"].reshape(-1, 3, 32, 32).astype(np.float32) / 255, np.array(d[b"labels"], dtype=np.int64)
+        parts = [batch(f"data_batch_{i}") for i in range(1, 6)]
+        Xtr, ytr = np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
+        Xte, yte = batch("test_batch")
+    return Xtr, ytr, Xte, yte
+
+
+def load_cifar10_feat(n_filters=256, patch=6, stride=2, seed=7):
+    """A frozen V1-like front-end for CIFAR: filters are normalised random patches sampled from
+    the training images (nothing is learned), rectified against a per-filter threshold, then
+    quadrant-average-pooled to 2x2 x n_filters = 1024 dims.  The cortex under study still does
+    all the learning; this is the retina/V1 it receives."""
+    cache = os.path.join(CIFAR_DIR, f"feat{n_filters}.npz")
+    if os.path.exists(cache):
+        z = np.load(cache)
+        Xtr, ytr, Xte, yte = z["Xtr"].astype(np.float32), z["ytr"], z["Xte"].astype(np.float32), z["yte"]
+    else:
+        Xtr_r, ytr, Xte_r, yte = _cifar_rgb()
+        g = torch.Generator().manual_seed(seed)
+        idx_img = torch.randint(0, len(Xtr_r), (n_filters,), generator=g)
+        idx_y = torch.randint(0, 32 - patch, (n_filters,), generator=g)
+        idx_x = torch.randint(0, 32 - patch, (n_filters,), generator=g)
+        W = torch.stack([torch.as_tensor(Xtr_r[i, :, y:y + patch, x:x + patch])
+                         for i, y, x in zip(idx_img.tolist(), idx_y.tolist(), idx_x.tolist())])
+        W = W - W.mean(dim=(1, 2, 3), keepdim=True)
+        W = W / (W.flatten(1).norm(dim=1).view(-1, 1, 1, 1) + 1e-6)
+
+        def feats(X):
+            out = []
+            thr = None
+            for i in range(0, len(X), 500):
+                z = torch.nn.functional.conv2d(torch.as_tensor(X[i:i + 500]), W, stride=stride)
+                if thr is None:
+                    thr = z.mean(dim=(0, 2, 3), keepdim=True)  # per-filter mean response
+                z = torch.relu(z - thr)
+                p = z.shape[-1] // 2
+                q = torch.stack([z[:, :, :p, :p].mean((2, 3)), z[:, :, :p, p:].mean((2, 3)),
+                                 z[:, :, p:, :p].mean((2, 3)), z[:, :, p:, p:].mean((2, 3))], 2)
+                out.append(q.reshape(len(z), -1).numpy())
+            return np.concatenate(out)
+        Xtr, Xte = feats(Xtr_r), feats(Xte_r)
+        np.savez_compressed(cache, Xtr=Xtr.astype(np.float16), ytr=ytr, Xte=Xte.astype(np.float16), yte=yte)
+        Xtr, Xte = Xtr.astype(np.float32), Xte.astype(np.float32)
+    mu, sd = Xtr.mean(0), Xtr.std(0)
+    sd[sd < 1e-6] = 1.0
+    return (Xtr - mu) / sd, ytr, (Xte - mu) / sd, yte
+
+
 def load_data(cfg):
     if cfg.get("dataset") == "cifar":
         X, y, Xe, ye = load_cifar10_gray()
+        return X, y, Xe, ye, (32, 32)
+    if cfg.get("dataset") == "cifarf":
+        X, y, Xe, ye = load_cifar10_feat()
         return X, y, Xe, ye, (32, 32)
     X, y, Xe, ye = RM.load_mnist()
     return X, y, Xe, ye, (28, 28)
@@ -585,7 +699,12 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
                         for pg in opt.param_groups:
                             pg["lr"] = 1e-3
                     else:
+                        if cfg.get("replay_noise"):
+                            Xr = Xr + cfg["replay_noise"] * torch.randn(Xr.shape, generator=g)
                         ctx_step(net, Xr, onehot(yr), 1e-3 * nrem_gain)
+            if model == "ctx" and cfg.get("sp") == "night" and replay == "nrem" and K:
+                net.regrow = cfg.get("sp_rho", 0.05)
+                net.structural_plasticity(g)
             if model == "ctx" and (rem_gen or rem_neg):  # REM: dreams as rehearsal and/or reverse learning
                 net.training = False
                 for _ in range(max(rem_gen, 20 if rem_neg else 0)):
@@ -774,8 +893,15 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     replay_noise = cfg.get("replay_noise", 0.0)          # 10B: replay is variable, not verbatim
     theta_r, frac_r = cfg.get("theta_r", 4.0), cfg.get("frac_r", 0.25)  # 10A homeostatic rotation
     theta_s = cfg.get("theta_s", 0.25)  # 10A2: ACh gate -- rotation only while novelty is high
+    # 11D down-selection: synaptic prune/regrow anchored to sleep windows (Tononi-Cirelli), not the
+    # clock.  "local": after every sp_every replay batches (= after each consolidation episode);
+    # "epoch": the phase-4 clock control; "night": after each night.  Replay-potentiated synapses
+    # are protected, unreplayed ones have decayed (KP) and are pruned first.
+    sp, sp_rho, sp_every, sp_ctr = cfg.get("sp"), cfg.get("sp_rho", 0.05), cfg.get("sp_every", 128), 0
     beta_nov = cfg.get("beta_nov", 1.3)  # 10A3: novelty = fast error EMA above its own slow baseline
+    gamma_p = cfg.get("gamma_p", 0.3)    # 11A: rotate while the error is still a gamma fraction of chance
     surprise_ema, surprise_slow, ach_on = None, None, []
+    err0_sum, err0_n = 0.0, 0           # chance-level error, measured on the first 20 batches
     S = [None] + [torch.zeros(s) for s in hidden]  # unit-level sleep pressure: use since last consolidation
     gate_log = []
     Xtr, ytr, Xte, yte, ishape = load_data(cfg)
@@ -786,6 +912,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     input_shape=None if front else ishape,
                     **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"])))
     net.front = front
+    if sp:
+        net.regrow = sp_rho
     buf = Buffer(K, policy, g)
     tasks = [tuple(range(10))] if static else TASKS
     onehot = lambda y: torch.nn.functional.one_hot(torch.as_tensor(y), 10).float()
@@ -809,6 +937,24 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                 x, a, eps = net.relax(Xb, onehot(yb), 0, 0.0)
                 if mask_policy == "refractory":  # what fired now sits out the next competition
                     net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
+                elif mask_policy == "refr_prog":
+                    # 11A: two scale-free conditions, either opens the gate.  (a) novelty: the fast
+                    # error EMA rises above its slow baseline (a task switch); (b) unmastered: the
+                    # error is still a substantial fraction of its chance level e0 (an underfit
+                    # stream never closes the gate, a mastered one does).  Unifies the MNIST regime
+                    # (converged -> rotation off) with the CIFAR regime (underfit -> rotation on).
+                    sb = float((eps[net.L] ** 2).sum(1).mean())
+                    surprise_ema = sb if surprise_ema is None else 0.9 * surprise_ema + 0.1 * sb
+                    surprise_slow = sb if surprise_slow is None else 0.998 * surprise_slow + 0.002 * sb
+                    if err0_n < 20:
+                        err0_sum, err0_n = err0_sum + sb, err0_n + 1
+                    e0 = err0_sum / max(err0_n, 1)
+                    if err0_n < 20 or surprise_ema >= gamma_p * e0 or surprise_ema >= beta_nov * surprise_slow:
+                        net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
+                        ach_on.append(1.0)
+                    else:
+                        net.suppress = None
+                        ach_on.append(0.0)
                 elif mask_policy == "refr_nov":
                     # 10A3: the absolute threshold cannot compare across data sets (the static
                     # stream's converged error sits above any theta the sequential stream dips
@@ -864,7 +1010,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     S[l] = S[l] + fired                             # Process S: rises with use
                     use[l] = 0.9 * use[l] + 0.1 * fired            # recent use, ~10 batches
                     long_use[l] = 0.995 * long_use[l] + 0.005 * fired  # long-term use, ~200 batches
-                    if mask_policy in ("silent", "refractory", "refr_press", "refr_frac", "refr_ach", "refr_nov"):
+                    if mask_policy in ("silent", "refractory", "refr_press", "refr_frac", "refr_ach", "refr_nov", "refr_prog"):
                         awake.append((fired > 0).float())
                     elif mask_policy == "idle":
                         awake.append((use[l] >= use[l].median()).float())   # asleep = idle half
@@ -915,6 +1061,10 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                                          for l in range(1, net.L)])
                         net.local_update(xr, ar, er, 1e-3 * nrem_gain, 1e-3, syn_mask=syn, bias_mask=bias)
                         replay_used += 1
+                        if sp == "local":
+                            sp_ctr += 1
+                            if sp_ctr % sp_every == 0:
+                                net.structural_plasticity(g)
                         if gate == "pressure":  # the sleep the asleep units just had discharges their pressure
                             for l in range(1, net.L):
                                 S[l] = S[l] * (1.0 - delta * (1.0 - awake[l]))
@@ -925,8 +1075,14 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     Xr, yr = buf.sample(256)
                     if Xr is None:
                         break
+                    if replay_noise:
+                        Xr = Xr + replay_noise * torch.randn(Xr.shape, generator=g)
                     ctx_step(net, Xr, onehot(yr), 1e-3 * nrem_gain)
                     replay_used += 1
+                if sp == "night":
+                    net.structural_plasticity(g)
+            if sp == "epoch":
+                net.structural_plasticity(g)
         net.suppress = None
         S_te = predict("ctx", net, Xte)
         pred = S_te.argmax(1)
