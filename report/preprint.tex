@@ -1,0 +1,622 @@
+\documentclass[11pt]{article}
+
+% ---------------------------------------------------------------- preamble
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,patterns,calc}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{natbib}
+\newcommand{\kwta}{$k$-WTA}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+\newtheorem{remark}{Remark}
+
+% Placeholder for results still being produced (phase 11 runs in progress).
+\newcommand{\pending}[1]{\textcolor{orange!80!black}{\textbf{[PENDING:} #1\textbf{]}}}
+
+\title{Local Sleep Replaces the Sleep Night:\\
+Use-Dependent Unit Rotation and Isolated Micro-Batch Replay\\
+for Continual Learning Without Offline Phases}
+
+\author{%
+  \pending{author list and affiliation to be finalised}\\[2pt]
+  \small Nanyang Technological University\\
+  \small \texttt{https://github.com/Hanny658/MLP-Cortex}}
+\date{Preprint, draft of \today}
+
+\begin{document}
+\maketitle
+
+% ---------------------------------------------------------------- abstract
+\begin{abstract}
+Biological brains consolidate memories both in dedicated offline states (sleep) and, as recent
+causal evidence shows, through \emph{local sleep}: brief, use-dependent off-periods of individual
+cortical circuits during wakefulness. In contrast, replay-based continual learning in artificial
+neural networks almost universally relies on offline consolidation phases or on interleaving
+replayed samples with the input stream. We ask whether a network trained end-to-end by local,
+biologically constrained learning rules can consolidate \emph{during inference}, with no offline
+phase at all. We introduce (i) a \emph{refractory rotation} rule under which units that have just
+fired sit out the next competition, (ii) an \emph{exact isolation} scheme that confines replay
+updates to synapses invisible to the current input under $k$-winner-take-all (\kwta) dynamics,
+with per-synapse optimiser state advanced only inside the mask, and (iii) internal control signals
+--- a unit-level homeostatic pressure that triggers replay bursts, and a relative-novelty
+(fast-over-slow error) gate that decides when rotation runs. On class-incremental split-MNIST the
+resulting system reaches $91.3\pm0.3\%$ with no offline phase, exceeding the best offline-night
+schedule ($90.7\pm0.4\%$), at a replay-sample cost of $\approx\!1.2\times$ the night's; masked
+replay is insensitive to replay batch size down to eight samples, whereas unmasked replay and
+offline nights degrade sharply at the same sizes. The i.i.d.\ cost of rotation ($1.3$--$3.0$
+points) is eliminated by the relative-novelty gate on learnable streams ($95.0\%$ vs.\ $95.0\%$
+without rotation) and reverses into a $+2.5$ to $+6.5$ point \emph{gain} on harder data
+(split CIFAR-10), where the full ordering of methods transfers. We further show that
+surprise-triggered waking replay fails at any volume, that the trigger must be homeostatic, and
+that the residual advantage of offline nights is confined to very small episodic buffers. We
+provide exactness proofs for the isolation rule and release all code, checkpoints and diagnostics.
+\end{abstract}
+
+% ---------------------------------------------------------------- 1
+\section{Problem Formulation}
+\label{sec:problem}
+
+\paragraph{Setting.}
+Let a stream of labelled examples $(x_t, y_t) \in \mathbb{R}^{d}\times\{1,\dots,C\}$ be presented
+in $T$ contiguous tasks $\mathcal{T}_1,\dots,\mathcal{T}_T$, where task $\mathcal{T}_\tau$
+contains only classes $\mathcal{C}_\tau \subset \{1,\dots,C\}$, the $\mathcal{C}_\tau$ are
+disjoint, and no task identity is available at test time (class-incremental learning). A network
+$f_\theta$ with a single shared $C$-way readout is trained on the stream and evaluated on all $C$
+classes after the final task,
+\begin{equation}
+A_{\mathrm{seq}}(\theta) \;=\; \Pr_{(x,y)\sim\mathcal{D}_{\mathrm{test}}}\!\big[\arg\max_c f_\theta(x)_c = y\big],
+\qquad
+F \;=\; \frac{1}{T-1}\sum_{\tau=1}^{T-1}\big(a_{\tau,\tau} - a_{T,\tau}\big),
+\end{equation}
+where $a_{t,\tau}$ is accuracy on task $\tau$ after learning task $t$ and $F$ is forgetting.
+
+\paragraph{Constraints.}
+We restrict the learner to a set $\mathcal{B}$ of cortical constraints: no weight transport
+(feedback synapses are learned, never copied), errors carried by a bounded burst-like channel,
+Dale's law, sparse population codes (\kwta{} on wide layers), sparse distance-dependent
+connectivity, and a single forward--feedback sweep per example (no iterative relaxation). An
+episodic memory (``hippocampus'') of at most $K$ raw examples with reservoir writing is permitted;
+$K$ is a budget, not a free parameter.
+
+\paragraph{Objective.}
+Unlike benchmark-chasing continual learning, we optimise a three-way trade-off
+\begin{equation}
+\max_\theta \;\big(A_{\mathrm{seq}},\, A_{\mathrm{iid}},\, -R,\, -E\big)
+\quad\text{subject to}\quad \theta \in \mathcal{B},
+\label{eq:pareto}
+\end{equation}
+where $A_{\mathrm{iid}}$ is accuracy of the identical learner on the i.i.d.\ shuffle of the same
+data (the \emph{static axis}: a brain-like mechanism must not damage ordinary learning), $R$ is
+the replay cost in \emph{samples $\times$ synapses}, and $E$ an event-driven energy proxy
+(Section~\ref{sec:setup}). The central question of this paper: can the offline consolidation term
+be removed entirely --- consolidation occurring only \emph{during} inference on the wake stream
+--- without losing $A_{\mathrm{seq}}$, and at what cost in $A_{\mathrm{iid}}$ and $R$?
+
+% ---------------------------------------------------------------- 2
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Sleep-inspired consolidation in ANNs.}
+The Bazhenov line implements sleep as a global offline phase: networks are converted to spiking
+dynamics and driven by noise under local Hebbian plasticity, recovering old tasks after each new
+one \citep{tadros2022}, after several tasks at once \citep{bazhenov2026}, in spiking networks with
+coarse alternation of training and sleep \citep{golden2022}, and in equilibrium-propagation
+networks combined with small rehearsal buffers \citep{kubo2025}. Wake--sleep frameworks with NREM
+and REM stages \citep{sorrenti2024,robinson2022} and engineering systems such as SIESTA
+\citep{harun2023} likewise schedule consolidation offline. In all of these, sleep is global,
+offline, and clocked; none implements consolidation confined to currently unused units during
+ongoing inference.
+
+\paragraph{Gating and subnetwork methods.}
+Context-dependent gating (XdG) activates a fixed random subnetwork per task but requires task
+identity at train and test time \citep{masse2018}; learned gates \citep{tilley2023}, dendritic
+context vectors from input prototypes \citep{iyer2022}, task-free sparsification by feedforward
+and top-down errors \citep{lassig2023}, and gradient-recovered functional masks \citep{mckee2026}
+remove the explicit label but all derive the gate from the \emph{input identity}. The rotation
+studied here is instead a function of each unit's own \emph{use history}, which, to our knowledge
+(literature search, August 2026), has no ANN precedent.
+
+\paragraph{Complementary learning systems.}
+CLS-ER maintains fast/slow EMA copies of the weights as semantic memories \citep{arani2022} and
+DualNet trains a slow self-supervised learner beside a fast supervised one \citep{pham2021}; both
+raise the value of each replayed sample but still replay at every step. Our contribution is
+orthogonal: we change \emph{where} (isolated synapses), \emph{when} (homeostatic bursts) and at
+what granularity (micro-batches) replay is applied.
+
+\paragraph{Pattern separation.}
+Cerebellum-, mushroom-body- and dentate-gyrus-style sparse expansions
+\citep{caycogajic2017,caycogajic2019,litwin2017} inspire continual learners such as the FlyModel
+\citep{shen2021}, sparse distributed memory \citep{bricken2023} and DG-gated mixtures
+\citep{kapoor2026}. We tested this family as a front-end and report a negative result
+(Section~\ref{sec:results}).
+
+\paragraph{Biology of local sleep.}
+Sleep-like off-periods occur locally in awake, sleep-deprived animals \citep{vyazovskiy2011}.
+Causal evidence is recent: optogenetically inducing ON/OFF alternation in one cortical hemisphere
+of awake mice locally discharges sleep pressure, weakens synaptic markers (GluA1, pS845) and
+rescues memory consolidation under sleep deprivation, whereas an equal \emph{tonic} reduction of
+firing does not \citep{driessen2026}. Our refractory rotation is the algorithmic counterpart of
+this alternation requirement, and our silent-mask control the counterpart of tonic silencing.
+
+% ---------------------------------------------------------------- 3
+\section{Experiment Setup}
+\label{sec:setup}
+
+\paragraph{Data and protocol.}
+Sequential axis: split-MNIST (five tasks of two classes, $5$ epochs per task) and split CIFAR-10
+(same protocol; $32{\times}32$ luminance so that distance-dependent connectivity retains its
+geometry). Static axis: the identical learner and budgets on the i.i.d.\ shuffle. Waking batches
+have $n_w=16$ samples; the episodic buffer holds $K\in\{200,1000\}$ raw samples under reservoir
+writing. All numbers are mean $\pm$ s.d.\ over three seeds unless marked otherwise.
+\pending{split CIFAR-10 with a frozen V1-like random-patch feature front-end (1024-D, linear
+probe $\approx49\%$) is running; all cifar-feature numbers below are placeholders.}
+
+\paragraph{Architecture.}
+$d$--$512$--$256$--$C$ with \kwta{} sparsity $5\%$ on the hidden layers ($d$--$256$--$128$--$C$ at
+$10\%$ where noted), $30\%$ distance-dependent connectivity on hidden synapses, Dale's law with
+$80\%$ excitatory units, and the single-sweep learning rule of Section~\ref{sec:method}.
+
+\paragraph{Baselines.}
+(i) Backpropagation with experience replay at equal buffer $K$ (mandatory in every table);
+(ii) the offline \emph{night}: after each waking epoch, $20$ replay batches of $256$ samples at
+$3\times$ learning rate with no concurrent input (the strongest schedule from our earlier
+ablations); (iii) interleaved ER for the local learner; (iv) no buffer.
+
+\paragraph{Metrics.}
+Final accuracy, forgetting $F$, replay cost $R$ (batches and samples), the isolated-channel width
+$\rho_\ell$ (fraction of replay-activated units in layer $\ell$ that are asleep for the current
+input), code overlap (mean pairwise Jaccard of task-active unit sets), participation-ratio
+dimensionality, and an event-driven energy proxy: $0.9$\,pJ per synaptic event for spiking
+inference vs.\ $4.6$\,pJ per MAC for dense rate inference, with thresholds calibrated post hoc
+and $T_s$ integration steps \citep{merolla2014convention}.
+
+% ---------------------------------------------------------------- 4
+\section{Methodology}
+\label{sec:method}
+
+\subsection{Cortical base learner}
+
+Layer activities are $a^0 = x$ and, for $\ell = 1,\dots,L$,
+\begin{equation}
+z^\ell = g^\ell \,(W^\ell a^{\ell-1}) + b^\ell, \qquad
+a^\ell = \Phi_k\!\big(\sigma(z^\ell)\odot(1-s^\ell)\big),
+\label{eq:forward}
+\end{equation}
+where $\sigma$ is a rectifier, $s^\ell \in \{0,1\}^{n_\ell}$ is the (possibly empty)
+\emph{suppression mask} of Section~\ref{sec:rotation}, and $\Phi_k$ keeps the $k$ largest entries
+of each row and zeroes the rest (\kwta). Errors are produced by one top-down sweep: with target
+$y$,
+\begin{equation}
+\varepsilon^L = y - z^L, \qquad
+\varepsilon^\ell = \sigma'(z^\ell)\odot\Big(B^\ell\, \big[\kappa\tanh(\varepsilon^{\ell+1}/\kappa)
+\odot \mathbf{1}(a^{\ell+1}>0)\big]\Big),
+\label{eq:sweep}
+\end{equation}
+i.e.\ a bounded, event-gated burst signal carried by learned feedback weights $B^\ell$ (no
+transport). Forward and feedback weights follow the same local product with a shared decay
+$\lambda$ (Kolen--Pollack alignment \citep{kolen1994,akrout2019}),
+\begin{equation}
+\Delta W^\ell \propto \varepsilon^\ell (a^{\ell-1})^{\!\top} - \lambda W^\ell,\qquad
+\Delta B^{\ell-1} \propto \varepsilon^\ell (a^{\ell-1})^{\!\top} - \lambda B^{\ell-1},
+\label{eq:kp}
+\end{equation}
+with sign-concordant feedback under Dale's law and per-synapse adaptive scaling
+($\epsilon$-floored Adam). Equations~\eqref{eq:forward}--\eqref{eq:kp} were fixed by earlier
+ablation ladders and are not varied here.
+
+\subsection{Exactly isolated replay}
+\label{sec:isolation}
+
+Let $x$ be the current waking batch and define the \emph{awake set}
+$\mathcal{A}^\ell(x) = \{i : a_i^\ell(x) \neq 0 \text{ for some sample in } x\}$. During the same
+forward step, a replay batch $r$ drawn from the buffer is applied through the synapse mask
+\begin{equation}
+M^\ell_{ij} \;=\; \mathbf{1}\big[\, j \notin \mathcal{A}^{\ell-1}(x) \;\lor\; i \notin \mathcal{A}^{\ell}(x) \,\big],
+\label{eq:mask}
+\end{equation}
+i.e.\ a synapse may take the replay update iff its presynaptic unit is silent for the current
+input or its postsynaptic unit is asleep. Optimiser state (first and second moments) advances
+\emph{only} inside the mask, so momentum cannot leak the update outside it. The readout row
+remains plastic (old classes must stay calibrated).
+
+\begin{proposition}[Pre-silent updates are exactly invisible]
+\label{prop:pre}
+Fix input $x$ and let $\widehat W^\ell = W^\ell + \Delta^\ell$ with $\Delta^\ell_{ij} = 0$
+whenever $a^{\ell-1}_j(x) \neq 0$. Then the network output on $x$ is unchanged for any magnitude
+of $\Delta$.
+\end{proposition}
+\begin{proof}
+By induction on $\ell$. Assume $a^{\ell-1}$ is unchanged (true for $\ell=1$ since $a^0=x$). For
+any unit $i$, $\widehat z^\ell_i - z^\ell_i = g^\ell \sum_j \Delta^\ell_{ij}\, a^{\ell-1}_j(x)$.
+Each term vanishes: if $a^{\ell-1}_j(x)\neq 0$ then $\Delta^\ell_{ij}=0$; otherwise
+$a^{\ell-1}_j(x)=0$. Hence $z^\ell$, and therefore $a^\ell$ through
+\eqref{eq:forward}, is unchanged; the induction closes at the output layer.
+\end{proof}
+
+\begin{proposition}[Post-asleep updates are invisible under a margin condition]
+\label{prop:post}
+Let $\Delta^\ell$ additionally allow $\Delta^\ell_{ij}\neq0$ for units
+$i\notin\mathcal{A}^\ell(x)$ with active presynaptic partners. Write
+$\delta_i = g^\ell\sum_j \Delta^\ell_{ij} a_j^{\ell-1}(x)$ and let $z_{(k)}$ be the $k$-th order
+statistic of the post-nonlinearity values entering $\Phi_k$. If for every such unit
+$\sigma(z^\ell_i + \delta_i) < z_{(k)}$ (the perturbed unit stays below the winner threshold),
+the output on $x$ is unchanged.
+\end{proposition}
+\begin{proof}
+A unit outside $\mathcal{A}^\ell(x)$ contributes $a^\ell_i(x)=0$. After the update its
+pre-activation becomes $z^\ell_i+\delta_i$; under the stated margin it is still excluded by
+$\Phi_k$ (or rectified to zero), so $a^\ell_i(x)=0$ still, all other units' inputs are untouched
+by Proposition~\ref{prop:pre}'s argument, and the layer's output is identical.
+\end{proof}
+
+\begin{corollary}[Suppressed units are exact for any magnitude]
+\label{cor:refr}
+If $i$ is suppressed by the rotation mask ($s^\ell_i=1$ in \eqref{eq:forward}), then
+$a^\ell_i(x)=0$ identically and Proposition~\ref{prop:post} holds with no margin condition.
+\end{corollary}
+
+\begin{remark}
+Empirically the masked replay update changed the waking batch's output by $0.0$ (double
+precision) in all logged checks; Corollary~\ref{cor:refr} explains why the refractory rotation
+below makes the isolation robust rather than merely approximate.
+\end{remark}
+
+\subsection{Refractory rotation and its gates}
+\label{sec:rotation}
+
+\begin{definition}[Refractory rotation]
+After processing waking batch $x_t$, set $s^\ell_i(t{+}1) = \mathbf{1}[i \in \mathcal{A}^\ell(x_t)]$:
+every unit that fired sits out the next competition and is therefore asleep --- and consolidable
+--- for batch $x_{t+1}$.
+\end{definition}
+
+Rotation widens the isolated channel $\rho_\ell$ from $0.2$--$0.3$ (natural silence) to
+$\approx0.53$, at the price of running inference on the second-best coalition. Two internal
+signals control the system (Figure~\ref{fig:mech}):
+
+\paragraph{Homeostatic pressure (when to replay).} Each unit integrates its own use,
+$S_i \leftarrow S_i + \bar a_i(x_t)$, and a replay \emph{burst} of $n_b$ consecutive batches is
+triggered when the mean pressure of currently asleep units exceeds $\theta$; consolidation
+discharges the pressure of the units that received it, $S_i \leftarrow (1-\mathbf{1}[i\ \mathrm{asleep}])\,S_i$.
+This is a unit-level Process~S \citep{borbely1982}.
+
+\paragraph{Relative novelty (when to rotate).} With fast and slow EMAs of the batch error
+$\bar e_f(t) = (1{-}\alpha_f)\bar e_f + \alpha_f e_t$, $\alpha_f{=}0.1$, and
+$\bar e_s$, $\alpha_s{=}0.002$, rotation runs only while
+\begin{equation}
+\bar e_f(t) \;\ge\; \beta\, \bar e_s(t), \qquad \beta \approx 1.1\text{--}1.5,
+\label{eq:nov}
+\end{equation}
+i.e.\ while the stream is \emph{new relative to the learner's own recent history} (an ACh-like
+adaptation signal \citep{hasselmo2006}). Absolute thresholds provably cannot serve here: the
+converged error of a ten-class i.i.d.\ stream exceeds any level a two-class task dips under, and
+we observe exactly this failure (gate open $100\%$ of the time on static MNIST, $95\%$ on CIFAR,
+for any threshold that behaves on split-MNIST).
+\pending{a progress-keyed variant --- rotate while $\bar e_f \ge \gamma\, e_0$ (error still a
+$\gamma$ fraction of its chance level $e_0$) OR condition \eqref{eq:nov} --- is running; it is
+designed to keep rotation on for never-converging streams where rotation is beneficial.}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize, >=Latex,
+  unit/.style={circle, draw=black!70, minimum size=8.5pt, inner sep=0pt},
+  awake/.style={unit, fill=blue!55},
+  asleep/.style={unit, fill=white},
+  refr/.style={unit, pattern=north east lines, pattern color=black!60},
+  lay/.style={},
+]
+% ---- panel (a): isolation rule
+\node at (-0.2,3.05) {\textbf{(a)} exactly isolated replay};
+\foreach \i/\st in {0/awake,1/asleep,2/awake,3/refr,4/asleep}
+  \node[\st] (x\i) at (0.55*\i, 2.2) {};
+\foreach \i/\st in {0/asleep,1/awake,2/refr,3/awake,4/asleep}
+  \node[\st] (h\i) at (0.55*\i, 1.1) {};
+\foreach \i/\st in {1/awake,3/awake} \node at (0.55*\i, 0.0) {};
+\node[awake] (o0) at (0.825, 0.0) {};
+\node[awake] (o1) at (1.375, 0.0) {};
+% allowed replay synapses (pre silent or post asleep): dashed green
+\draw[green!55!black, dashed, thick] (x1) -- (h0);
+\draw[green!55!black, dashed, thick] (x3) -- (h2);
+\draw[green!55!black, dashed, thick] (x4) -- (h4);
+\draw[green!55!black, dashed, thick] (x2) -- (h0);
+\draw[green!55!black, dashed, thick] (x0) -- (h2);
+% frozen synapses (both awake): grey
+\draw[black!30] (x0) -- (h1); \draw[black!30] (x2) -- (h1);
+\draw[black!30] (x0) -- (h3); \draw[black!30] (x2) -- (h3);
+\draw[black!30] (h1) -- (o0); \draw[black!30] (h3) -- (o1);
+\node[align=left, anchor=west] at (2.7, 2.2)
+  {\tikz\node[awake]{}; wake-active \quad \tikz\node[asleep]{}; silent};
+\node[align=left, anchor=west] at (2.7, 1.65)
+  {\tikz\node[refr]{}; refractory (forced rest)};
+\node[align=left, anchor=west] at (2.7, 1.1)
+  {\textcolor{green!55!black}{dashed}: replay may write\\ (pre silent $\lor$ post asleep, Eq.~\ref{eq:mask})};
+\node[align=left, anchor=west] at (2.7, 0.45)
+  {\textcolor{black!40}{grey}: frozen for this input\\ (both endpoints awake)};
+% ---- panel (b): control loop
+\begin{scope}[xshift=8.3cm]
+\node at (0.6,3.05) {\textbf{(b)} internal control};
+\node[draw, rounded corners, minimum width=2.5cm, minimum height=0.55cm] (wake) at (1.2, 2.35) {wake stream $x_t$};
+\node[draw, rounded corners, minimum width=2.5cm, minimum height=0.55cm] (press) at (1.2, 1.45) {pressure $S_i \mathrel{+}= \bar a_i$};
+\node[draw, rounded corners, minimum width=2.5cm, minimum height=0.55cm] (burst) at (1.2, 0.55) {replay burst ($n_b$ micro-batches)};
+\node[draw, rounded corners, minimum width=2.2cm, minimum height=0.55cm] (nov) at (4.6, 2.35) {$\bar e_f \ge \beta \bar e_s$?};
+\node[draw, rounded corners, minimum width=2.2cm, minimum height=0.55cm] (rot) at (4.6, 1.45) {rotation $s^\ell$};
+\draw[->] (wake) -- (press);
+\draw[->] (press) -- node[right]{$\langle S\rangle_{\mathrm{asleep}} \ge \theta$} (burst);
+\draw[->, dashed] (burst.west) to[bend left=40] node[left]{discharge} (press.west);
+\draw[->] (wake.east) -| (nov.north);
+\draw[->] (nov) -- node[right]{novelty} (rot);
+\draw[->, dashed] (rot.south) to[bend left=25] node[below right]{\ widens asleep set} (burst.east);
+\end{scope}
+\end{tikzpicture}
+\caption{\textbf{Mechanism.} (a) During each waking batch, replay from the episodic buffer is
+written only into synapses whose update is provably invisible to the current input
+(Propositions~\ref{prop:pre}--\ref{prop:post}); refractory rotation forces recently used units
+into the consolidable set (Corollary~\ref{cor:refr}). (b) Two internal signals: unit-level
+homeostatic pressure triggers replay bursts; a relative-novelty gate decides when rotation runs.}
+\label{fig:mech}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\scriptsize, >=Latex]
+% timeline comparison
+\draw[->] (0,1.5) -- (11.3,1.5) node[right]{$t$};
+\node[left] at (0,1.9) {\textbf{offline night}};
+\foreach \x in {0,0.12,...,4.4} \draw[black!60] (\x,1.42) -- (\x,1.58);
+\draw[fill=green!30, draw=green!50!black] (4.5,1.28) rectangle (6.0,1.72);
+\node at (5.25,1.95) {night: $480 \times 256$ offline};
+\foreach \x in {6.1,6.22,...,10.5} \draw[black!60] (\x,1.42) -- (\x,1.58);
+\draw[->] (0,0.3) -- (11.3,0.3) node[right]{$t$};
+\node[left] at (0,0.7) {\textbf{local sleep}};
+\foreach \x in {0,0.12,...,10.5} \draw[black!60] (\x,0.22) -- (\x,0.38);
+\foreach \x in {0.6,1.9,3.1,4.6,5.9,7.3,8.6,9.9} \draw[fill=blue!45, draw=blue!60!black] (\x,0.08) rectangle (\x+0.32,0.52);
+\node at (5.5,-0.25) {replay bursts of $8$--$16$ micro-batches, pressure-triggered, isolated, concurrent with inference};
+\end{tikzpicture}
+\caption{\textbf{Consolidation schedules.} Ticks are waking batches. The offline night pauses the
+stream; local sleep consolidates during it, in SWR-like bursts confined to asleep units.}
+\label{fig:timeline}
+\end{figure}
+
+\subsection{Cost accounting}
+Replay cost is measured in samples ($R_s$ = batches $\times$ batch size) and synaptic work.
+The night costs $R_s = 480\times256 \approx 1.2\times10^5$ samples. Continuous local sleep with
+micro-batches of $8$ costs $18{,}760 \times 8 \approx 1.5\times10^5$ samples ($1.2\times$ the
+night); pressure-triggered bursts with batch $64$ cost $1.8\times10^5$ ($1.4\times$).
+
+% ---------------------------------------------------------------- 5
+\section{Results}
+\label{sec:results}
+
+\subsection{Local sleep replaces the night}
+\label{sec:r1}
+
+On split-MNIST at $K{=}1000$, refractory local sleep with replay every other waking batch (batch
+$64$) reaches $\mathbf{91.3\pm0.3\%}$ with no offline phase, above the best offline night
+($90.7\pm0.4\%$) and far above unmasked interleaved ER at the same budget ($86.1$--$86.9\%$).
+Adding a night on top of continuous local sleep yields nothing ($90.9\pm0.3$ vs.\ $90.8\pm0.1$):
+once consolidation runs during wake, the offline phase is redundant at this buffer size.
+
+\subsection{Isolation stabilises micro-batch replay}
+Figure~\ref{fig:batch}: masked refractory replay is flat in replay batch size from $256$ down to
+$8$ samples ($90.4\to90.5\%$), while unmasked ER falls to $83.9\pm1.2$, the silent mask to
+$87.8\pm2.1$, and the offline night to $81.0\pm1.6$ at batch $16$. Isolation --- including
+optimiser state confined to the mask --- is what makes replay affordable: the earlier
+``$39\times$'' cost of inference-time consolidation was an artefact of counting $256$-sample
+batches.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.48\linewidth]{figs/fig_batch.pdf}\hfill
+\includegraphics[width=.48\linewidth]{figs/fig_timing.pdf}
+\caption{\textbf{Left (isolation):} final split-MNIST accuracy vs.\ replay batch size. Masked
+refractory replay is insensitive down to $8$ samples; unmasked, silent-masked and offline-night
+replay all degrade. \textbf{Right (timing):} accuracy vs.\ number of waking replay batches.
+Even trickles and rare naps fail; bursts of $8$--$16$ succeed; unit-level pressure triggering
+(stars) dominates at equal budget; surprise triggering fails at any volume.}
+\label{fig:batch}
+\end{figure}
+
+\subsection{When replay must be rare: homeostatic bursts, never surprise}
+Figure~\ref{fig:batch} (right): at ${\sim}12\%$ of replay events, clocked bursts of $8$--$16$
+batches retain $86.8$--$87.6\%$ while an even trickle collapses ($60.9\pm4.1$) and rare long naps
+also fail ($63$--$70\%$) --- masked replay reaches only ${\sim}$half the synapses per event and
+can neither wait nor dribble. Pressure-triggered bursts reach $\mathbf{89.9\pm0.1\%}$ at $15\%$ of
+events ($2{,}773$ batches; $1.4\times$ night samples with batch $64$). Surprise-triggered waking
+replay fails at \emph{any} volume ($\approx19\%$ even at $4{,}472$ events): novelty fires only
+after task switches and starves later epochs. The waking trigger must be homeostatic --- the
+opposite of the night's optimal trigger, which our earlier controller showed \emph{should} be
+novelty-timed.
+
+\subsection{The i.i.d.\ price of rotation and the novelty gate}
+Figure~\ref{fig:rotation}: always-on rotation costs $1.3$--$3.0$ points on i.i.d.\ MNIST
+($95.0\to92.0$--$93.7$). Gating rotation by \emph{unit-level pressure} only trades the axes
+(static $91.6\to94.0$ as sequential $88.8\to80.7$; no dominant point). The \emph{relative
+novelty} gate \eqref{eq:nov} removes the price at no sequential cost on MNIST: static
+$\mathbf{95.0\pm0.4}$ (rotation on $1.4$--$17\%$ of batches), sequential $90.3\pm0.4$
+($\beta{=}1.5$) or $90.9\pm0.6$ ($\beta{=}1.1$). On split CIFAR-10 the price \emph{reverses}:
+rotation gains $+2.5$ (refractory) to $+6.5$ points (pressure-selected rest) on the static axis
+--- forced rotation acts as a regulariser in the underfit regime --- and the novelty gate
+correctly stays open ($\ge95\%$) there under the progress-keyed variant.
+\pending{final 3-seed numbers for the progress-keyed gate on all four axes (running).}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/fig_rotation.pdf}
+\caption{\textbf{Rotation: price, trade-off, and gate.} Left: on i.i.d.\ MNIST the novelty gate
+restores no-rotation accuracy. Middle: on split-MNIST rotation is required and the gate keeps it.
+Right: on split CIFAR-10 (grayscale) rotation is a gain on \emph{both} axes.}
+\label{fig:rotation}
+\end{figure}
+
+\subsection{Transfer to CIFAR-10}
+On split CIFAR-10 (grayscale, same protocol) the ordering transfers and widens: refractory local
+sleep $27.1\pm1.7$ $>$ BP+ER $25.1\pm1.5$ $>$ offline night $23.8\pm1.2$ $>$ unmasked ER
+$20.9\pm1.8$ $>$ no buffer $16.0$--$16.5$, despite task-active code overlap of $0.9$--$0.98$.
+\pending{the same grid on the V1-like feature front-end; first seeds show the ordering holds for
+the local variants (refractory $37$, unmasked $31$, night $31$) but BP+ER strengthens markedly
+($43$) --- to be reported honestly as the regime where the local learner loses the lead.}
+
+\subsection{Small buffers: what the night still buys}
+At $K{=}200$ the night keeps an edge (Figure~\ref{fig:k200}). Replay diversity is the main lever
+during wake: noise $\sigma{=}0.2$ on replayed samples plus pressure bursts lifts local sleep from
+$81.8\pm2.9$ to $84.3\pm1.0$ (forgetting $0.08$), but the night reaches $86.9$. Mechanistically:
+(i) \emph{unmasked} waking replay is far worse ($72.9$) --- isolation is a benefit, not the cost;
+(ii) the same noise \emph{hurts} the offline night ($85.8\to78.1$) --- diversity is specifically a
+wake-side lever; (iii) a night added on top of noisy local sleep recovers little.
+The remaining gap is the offline window itself: with $200$ samples carrying ten classes, every
+waking batch between replays erodes the buffer's trace, and only interference-free consolidation
+locks it. Local sleep replaces the night only when the buffer is rich enough ($K\gtrsim10^3$) to
+sustain continuous re-writing. \pending{third seeds for three of the seven bars.}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.6\linewidth]{figs/fig_k200.pdf}
+\caption{\textbf{$K=200$ mechanism triangulation.} Isolation helps, diversity helps only during
+wake, and the irreducible advantage of the night at tiny buffers is its interference-free window.}
+\label{fig:k200}
+\end{figure}
+
+\subsection{Energy}
+Converted to spiking inference ($T_s{=}8$), the full system runs at $91.6\%$ and
+$119$\,nJ/sample vs.\ $2461$\,nJ for dense rate inference ($20.7\times$) and $516$\,nJ for
+event-driven rate inference ($4.3\times$); the rotation-trained network loses accuracy beyond
+$T_s{=}8$ ($90.4$ at $16$), unlike its non-rotated control ($94.1$) --- an open interaction
+between rotation-shaped weights and threshold calibration.
+
+\subsection{Negative results}
+For the record, the following were falsified under matched budgets: a frozen dentate-gyrus-style
+sparse expansion front-end (input decorrelation does not propagate through learned \kwta{} layers:
+task overlap at the input drops $0.79\to0.18$ yet every downstream metric worsens by $3$--$11$
+points); generative (REM) replay as a substitute for episodic samples; margin-based reverse
+learning; surprise-gated memory \emph{writing}; multiplicative burst coding; absolute-threshold
+rotation gates. \pending{sleep-anchored structural plasticity (prune/regrow after consolidation
+windows vs.\ a clock schedule; Tononi--Cirelli down-selection) is running --- subsection to be
+added.}
+
+% ---------------------------------------------------------------- 6
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{Why isolation stabilises micro-batches.}
+A replay micro-batch is a high-variance gradient estimate. Applied to the full network it
+perturbs the very coalition currently encoding the wake stream, and with shared optimiser state
+the perturbation compounds (cf.\ the unmasked curve of Figure~\ref{fig:batch}). Inside the mask,
+each update is provably output-neutral for the present input
+(Propositions~\ref{prop:pre}--\ref{prop:post}), so variance accumulates only where it can do no
+immediate harm and is averaged over thousands of events. The offline night enjoys no such
+protection: with nothing clamping the network, a small noisy batch at $3\times$ learning rate
+moves the whole weight state.
+
+\paragraph{Correspondence with biology.}
+The refractory rule mirrors the causal finding of \citet{driessen2026} that ON/OFF
+\emph{alternation}, not tonic silencing, discharges local sleep pressure and rescues memory ---
+our silent-mask control (their tonic condition) is reliably worse. The dissociation of triggers
+--- homeostatic for waking consolidation, novelty-timed for full nights --- is a testable
+prediction for biology. The regime dependence of the rotation price (cost on easy streams, gain
+under chronic underfitting) may bear on why local sleep in vivo both impairs behaviour
+\citep{vyazovskiy2011} and serves useful functions when appropriately timed.
+
+\paragraph{Honest limits.}
+All results are at MLP scale on MNIST/CIFAR variants with three seeds; BP+ER overtakes the local
+learner on feature-based CIFAR (pending); the novelty gate needs its progress-keyed extension for
+never-converging streams; and the novelty claims rest on our own literature search (August 2026).
+
+% ---------------------------------------------------------------- 7
+\section{Future Work}
+\label{sec:future}
+
+(i) The progress-keyed rotation gate unifying converging and non-converging regimes
+(\pending{running}); (ii) sleep-anchored synaptic down-selection --- pruning immediately after
+consolidation windows so that replay-potentiated synapses are protected and KP-decayed ones are
+removed (\pending{running}); (iii) feature front-ends and convolutional stacks to test the
+mechanism beyond MLPs; (iv) closing the small-buffer gap with wake-compatible interference
+shields; (v) a throughput theory of the isolated channel predicting the required replay cadence
+from $\rho_\ell$, code overlap and the interference rate; (vi) the rotation--spiking calibration
+interaction.
+
+% ---------------------------------------------------------------- 8
+\section{Conclusion}
+
+Consolidation does not require an offline phase. With exactly isolated replay, refractory
+rotation of the active coalition, homeostatic burst triggering and a relative-novelty gate on the
+rotation itself, a biologically constrained learner consolidates \emph{while it infers}: it
+matches and slightly exceeds the strongest offline-night schedule on split-MNIST at
+$\sim\!1.2\times$ the night's replay samples, pays nothing on learnable i.i.d.\ streams, gains
+outright on harder data, and runs at a twentieth of dense-rate inference energy when spiking.
+The offline night retains one irreducible role --- consolidating very small episodic stores ---
+which sharpens, rather than blurs, the division of labour between wake and sleep.
+
+% ---------------------------------------------------------------- refs
+\begin{thebibliography}{99}\small
+
+\bibitem[Akrout et al.(2019)]{akrout2019} Akrout, M., Wilson, C., Humphreys, P., Lillicrap, T., Tweed, D. (2019). Deep learning without weight transport. \emph{NeurIPS 32}.
+
+\bibitem[Arani et al.(2022)]{arani2022} Arani, E., Sarfraz, F., Zonooz, B. (2022). Learning fast, learning slow: A general continual learning method based on complementary learning system. \emph{ICLR}.
+
+\bibitem[Bazhenov et al.(2026)]{bazhenov2026} Bazhenov, A., Delanois, J.E., Krishnan, G.P. (2026). Not just after one: Sleep-inspired replay prevents catastrophic forgetting after sequential tasks. \emph{arXiv:2606.08447}.
+
+\bibitem[Borb\'ely(1982)]{borbely1982} Borb\'ely, A.A. (1982). A two process model of sleep regulation. \emph{Human Neurobiology} 1, 195--204.
+
+\bibitem[Bricken et al.(2023)]{bricken2023} Bricken, T., Davies, X., Singh, D., Krotov, D., Kreiman, G. (2023). Sparse distributed memory is a continual learner. \emph{ICLR}.
+
+\bibitem[Cayco-Gajic et al.(2017)]{caycogajic2017} Cayco-Gajic, N.A., Clopath, C., Silver, R.A. (2017). Sparse synaptic connectivity is required for decorrelation and pattern separation in feedforward networks. \emph{Nature Communications} 8, 1116.
+
+\bibitem[Cayco-Gajic and Silver(2019)]{caycogajic2019} Cayco-Gajic, N.A., Silver, R.A. (2019). Re-evaluating circuit mechanisms underlying pattern separation. \emph{Neuron} 101, 584--602.
+
+\bibitem[Driessen et al.(2026)]{driessen2026} Driessen, K., Squarcio, F., Tononi, G., Cirelli, C. (2026). Induction of cortical ON/OFF periods in awake mice fulfills sleep functions. \emph{Nature Neuroscience} 29, 1954--1965.
+
+\bibitem[Golden et al.(2022)]{golden2022} Golden, R., Delanois, J.E., Sanda, P., Bazhenov, M. (2022). Sleep prevents catastrophic forgetting in spiking neural networks by forming a joint synaptic weight representation. \emph{PLoS Computational Biology} 18, e1010628.
+
+\bibitem[Harun et al.(2023)]{harun2023} Harun, M.Y., Gallardo, J., Hayes, T.L., Kemker, R., Kanan, C. (2023). SIESTA: Efficient online continual learning with sleep. \emph{TMLR}.
+
+\bibitem[Hasselmo(2006)]{hasselmo2006} Hasselmo, M.E. (2006). The role of acetylcholine in learning and memory. \emph{Current Opinion in Neurobiology} 16, 710--715.
+
+\bibitem[Iyer et al.(2022)]{iyer2022} Iyer, A., Grewal, K., Velu, A., Souza, L.O., Forest, J., Ahmad, S. (2022). Avoiding catastrophe: Active dendrites enable multi-task learning in dynamic environments. \emph{Frontiers in Neurorobotics} 16.
+
+\bibitem[Kapoor et al.(2026)]{kapoor2026} Kapoor, K., Mackey, W., Aloimonos, Y., Lin, X. (2026). HiCL: Hippocampal-inspired continual learning. \emph{AAAI}.
+
+\bibitem[Kolen and Pollack(1994)]{kolen1994} Kolen, J.F., Pollack, J.B. (1994). Backpropagation without weight transport. \emph{IEEE ICNN}.
+
+\bibitem[Kubo et al.(2025)]{kubo2025} Kubo, Y., Delanois, J.E., Bazhenov, M. (2025). Toward lifelong learning in equilibrium propagation: Sleep-like and awake rehearsal for enhanced stability. \emph{arXiv:2508.14081}.
+
+\bibitem[L\"assig et al.(2023)]{lassig2023} L\"assig, F., Aceituno, P.V., Sacramento, J., Grewe, B.F. (2023). Bio-inspired, task-free continual learning through activity regularization. \emph{Biological Cybernetics} 117, 345--361.
+
+\bibitem[Litwin-Kumar et al.(2017)]{litwin2017} Litwin-Kumar, A., Harris, K.D., Axel, R., Sompolinsky, H., Abbott, L.F. (2017). Optimal degrees of synaptic connectivity. \emph{Neuron} 93, 1153--1164.
+
+\bibitem[Masse et al.(2018)]{masse2018} Masse, N.Y., Grant, G.D., Freedman, D.J. (2018). Alleviating catastrophic forgetting using context-dependent gating and synaptic stabilization. \emph{PNAS} 115, E10467--E10475.
+
+\bibitem[McKee et al.(2026)]{mckee2026} McKee, K., Hazy, T., Zheng, Y., Bugaud, Z., Miconi, T. (2026). Cortex-inspired continual learning: Unsupervised instantiation and recovery of functional task networks. \emph{arXiv:2604.24637}.
+
+\bibitem[Merolla et al.(2014)]{merolla2014convention} Merolla, P.A., et al. (2014). A million spiking-neuron integrated circuit with a scalable communication network and interface. \emph{Science} 345, 668--673.
+
+\bibitem[Pham et al.(2021)]{pham2021} Pham, Q., Liu, C., Hoi, S. (2021). DualNet: Continual learning, fast and slow. \emph{NeurIPS 34}.
+
+\bibitem[Robinson et al.(2022)]{robinson2022} Robinson, B.S., Lau, C.W., New, A., Nichols, S.M., Johnson, E.C., Wolmetz, M., Coon, W.G. (2022). Continual learning benefits from multiple sleep mechanisms: NREM, REM, and synaptic downscaling. \emph{arXiv:2209.05245}.
+
+\bibitem[Shen et al.(2021)]{shen2021} Shen, Y., Dasgupta, S., Navlakha, S. (2021). Algorithmic insights on continual learning from fruit flies. \emph{arXiv:2107.07617}.
+
+\bibitem[Sorrenti et al.(2024)]{sorrenti2024} Sorrenti, A., Bellitto, G., Proietto Salanitri, F., Pennisi, M., Palazzo, S., Spampinato, C. (2024). Wake--sleep consolidated learning. \emph{arXiv:2401.08623}.
+
+\bibitem[Tadros et al.(2022)]{tadros2022} Tadros, T., Krishnan, G.P., Ramyaa, R., Bazhenov, M. (2022). Sleep-like unsupervised replay reduces catastrophic forgetting in artificial neural networks. \emph{Nature Communications} 13, 7742.
+
+\bibitem[Tilley et al.(2023)]{tilley2023} Tilley, M.J., Miller, M., Freedman, D.J. (2023). Artificial neuronal ensembles with learned context dependent gating. \emph{ICLR}.
+
+\bibitem[Tononi and Cirelli(2014)]{tononi2014} Tononi, G., Cirelli, C. (2014). Sleep and the price of plasticity: From synaptic and cellular homeostasis to memory consolidation and integration. \emph{Neuron} 81, 12--34.
+
+\bibitem[Vyazovskiy et al.(2011)]{vyazovskiy2011} Vyazovskiy, V.V., Olcese, U., Hanlon, E.C., Nir, Y., Cirelli, C., Tononi, G. (2011). Local sleep in awake rats. \emph{Nature} 472, 443--447.
+
+\bibitem[Whittington and Bogacz(2017)]{whittington2017} Whittington, J.C.R., Bogacz, R. (2017). An approximation of the error backpropagation algorithm in a predictive coding network with local Hebbian synaptic plasticity. \emph{Neural Computation} 29, 1229--1262.
+
+\end{thebibliography}
+
+\end{document}
