@@ -387,6 +387,23 @@ CONFIGS = {
     "static_sp11_refr_loc": dict(model="ctx", schedule="local", static=True, buffer=1000, policy="random",
                                  batch_wake=16, hidden=(512, 256), active_frac=0.05, mask="refractory",
                                  cadence=1, batch_replay=16, sp="local", sp_every=128, sp_rho=0.0085),
+    # ---- phase 12 (reviewer-inspired controls): E1 mirror isolation = the prior-art direction
+    # (protect the replayed past, learn the present in its null channel) built from the same
+    # per-batch support machinery; E2 stateless SGD under isolation (is mask-confined optimiser
+    # state the point, or does statelessness suffice?); E3 soft (adaptation) vs hard rotation.
+    **{f"{pre}g12_{name}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                       batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                       **({"static": True} if pre else {}), **kw)
+       for pre in ("", "static_")
+       for name, kw in {
+           "mirror": dict(mask="mirror"),
+           "sgd_refr": dict(mask="refractory", opt="sgd", eta=0.02),
+           "soft_refr": dict(mask="refr_soft"),
+       }.items()},
+    "g12_sgd_cad2_br64_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random", batch_wake=16,
+                                     cadence=2, batch_replay=64, mask="refractory", opt="sgd", eta=0.02, hidden=(512, 256), active_frac=0.05),
+    "g12_sgd_none_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random", batch_wake=16,
+                                cadence=1, batch_replay=16, mask="none", opt="sgd", eta=0.02, hidden=(512, 256), active_frac=0.05),
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -898,6 +915,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     # "epoch": the phase-4 clock control; "night": after each night.  Replay-potentiated synapses
     # are protected, unreplayed ones have decayed (KP) and are pruned first.
     sp, sp_rho, sp_every, sp_ctr = cfg.get("sp"), cfg.get("sp_rho", 0.05), cfg.get("sp_every", 128), 0
+    eta0 = cfg.get("eta", 1e-3)  # 12: SGD needs its own scale
+    mirror_syn, mirror_bias = None, None  # 12-E1: waking masked away from the last replay's support
     beta_nov = cfg.get("beta_nov", 1.3)  # 10A3: novelty = fast error EMA above its own slow baseline
     gamma_p = cfg.get("gamma_p", 0.3)    # 11A: rotate while the error is still a gamma fraction of chance
     surprise_ema, surprise_slow, ach_on = None, None, []
@@ -910,7 +929,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     front = make_front(cfg, seed)
     net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, 10], seed=seed,
                     input_shape=None if front else ishape,
-                    **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"])))
+                    **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"]),
+                           opt=cfg.get("opt", V7.get("opt", "adam"))))
     net.front = front
     if sp:
         net.regrow = sp_rho
@@ -937,6 +957,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                 x, a, eps = net.relax(Xb, onehot(yb), 0, 0.0)
                 if mask_policy == "refractory":  # what fired now sits out the next competition
                     net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
+                elif mask_policy == "refr_soft":  # 12-E3: adaptation, not silencing -- rate halved
+                    net.suppress = [None] + [0.5 * (a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
                 elif mask_policy == "refr_prog":
                     # 11A: two scale-free conditions, either opens the gate.  (a) novelty: the fast
                     # error EMA rises above its slow baseline (a task switch); (b) unmastered: the
@@ -1001,7 +1023,13 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     net.suppress = sup
                 # Adam moves ~eta per step: with a batch of 64 there are 4x the steps of the
                 # batch-256 protocol, so the waking step is scaled to keep the drift per epoch equal
-                net.local_update(x, a, eps, 1e-3 * batch_wake / 256, 1e-3)
+                if mask_policy == "mirror" and mirror_syn is not None:
+                    # 12-E1 (the prior-art direction, implemented with our machinery): the WAKING
+                    # update may not touch synapses whose both endpoints served the last replay
+                    # batch -- protect the past while learning the present; replay is unmasked.
+                    net.local_update(x, a, eps, eta0 * batch_wake / 256, 1e-3, syn_mask=mirror_syn, bias_mask=mirror_bias)
+                else:
+                    net.local_update(x, a, eps, eta0 * batch_wake / 256, 1e-3)
                 buf.offer(Xb, yb, (eps[net.L] ** 2).sum(1))
                 # who is awake for this input?
                 awake = [None]
@@ -1010,7 +1038,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     S[l] = S[l] + fired                             # Process S: rises with use
                     use[l] = 0.9 * use[l] + 0.1 * fired            # recent use, ~10 batches
                     long_use[l] = 0.995 * long_use[l] + 0.005 * fired  # long-term use, ~200 batches
-                    if mask_policy in ("silent", "refractory", "refr_press", "refr_frac", "refr_ach", "refr_nov", "refr_prog"):
+                    if mask_policy in ("silent", "refractory", "refr_soft", "refr_press", "refr_frac", "refr_ach", "refr_nov", "refr_prog"):
                         awake.append((fired > 0).float())
                     elif mask_policy == "idle":
                         awake.append((use[l] >= use[l].median()).float())   # asleep = idle half
@@ -1059,8 +1087,18 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                         eff_frac.append([float(((1 - awake[l]) * ((ar[l] > 0).float().mean(0) > 0).float()).sum()
                                                / max(1.0, float(((ar[l] > 0).float().mean(0) > 0).float().sum())))
                                          for l in range(1, net.L)])
-                        net.local_update(xr, ar, er, 1e-3 * nrem_gain, 1e-3, syn_mask=syn, bias_mask=bias)
+                        net.local_update(xr, ar, er, eta0 * nrem_gain, 1e-3, syn_mask=syn, bias_mask=bias)
                         replay_used += 1
+                        if mask_policy == "mirror":
+                            r_act = [None] + [((ar[l] > 0).float().mean(0) > 0).float() for l in range(1, net.L)]
+                            mirror_syn, mirror_bias = [None], [None]
+                            for l in range(1, net.L + 1):
+                                if l == net.L:
+                                    mirror_syn.append(torch.ones(10, hidden[-1])); mirror_bias.append(torch.ones(10))
+                                else:
+                                    pre_r = torch.ones(net.sizes[0]) if l == 1 else r_act[l - 1]
+                                    forbidden = r_act[l][:, None] * pre_r[None, :]
+                                    mirror_syn.append(1.0 - forbidden); mirror_bias.append(1.0 - r_act[l])
                         if sp == "local":
                             sp_ctr += 1
                             if sp_ctr % sp_every == 0:
@@ -1077,7 +1115,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                         break
                     if replay_noise:
                         Xr = Xr + replay_noise * torch.randn(Xr.shape, generator=g)
-                    ctx_step(net, Xr, onehot(yr), 1e-3 * nrem_gain)
+                    ctx_step(net, Xr, onehot(yr), eta0 * nrem_gain)
                     replay_used += 1
                 if sp == "night":
                     net.structural_plasticity(g)
