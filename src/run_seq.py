@@ -276,11 +276,107 @@ CONFIGS = {
     **{f"g9a_w256s10_{name}": dict(model="ctx", buffer=1000, policy="random", schedule="local", batch_wake=16,
                                    mask="refractory", cadence=1, **kw)
        for name, kw in (("br16", dict(batch_replay=16)), ("br8", dict(batch_replay=8)))},
+    # ---- phase 10A: homeostatic rotation (does the static price of forced rest disappear when
+    # rest is gated by accumulated per-unit pressure instead of the last batch?)
+    **{f"{pre}g10_{name}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                       batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                       **({"static": True} if pre else {}), **kw)
+       for pre in ("", "static_")
+       for name, kw in {"rp05": dict(mask="refr_press", theta_r=0.5), "rp1": dict(mask="refr_press", theta_r=1.0),
+                        "rp2": dict(mask="refr_press", theta_r=2.0), "rp4": dict(mask="refr_press", theta_r=4.0),
+                        "rp8": dict(mask="refr_press", theta_r=8.0), "rf25": dict(mask="refr_frac", frac_r=0.25),
+                        "rf50": dict(mask="refr_frac", frac_r=0.50)}.items()},
+    # ---- phase 10A2: ACh-gated rotation -- plain refractory, but only while the stream is novel
+    **{f"{pre}g10_ach{tag}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                         batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                         mask="refr_ach", theta_s=th, **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for tag, th in (("15", 0.15), ("25", 0.25), ("40", 0.40))},
+    "cif_ach25_br16": dict(model="ctx", dataset="cifar", buffer=1000, policy="random", schedule="local",
+                           batch_wake=16, cadence=1, batch_replay=16, mask="refr_ach", theta_s=0.25,
+                           hidden=(512, 256), active_frac=0.05),
+    # ---- phase 10A3: novelty as fast-over-slow error ratio (adaptation), data-set independent
+    **{f"{pre}g10_nov{tag}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                         batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                         mask="refr_nov", beta_nov=b, **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for tag, b in (("11", 1.1), ("13", 1.3), ("15", 1.5))},
+    "cif_nov13_br16": dict(model="ctx", dataset="cifar", buffer=1000, policy="random", schedule="local",
+                           batch_wake=16, cadence=1, batch_replay=16, mask="refr_nov", beta_nov=1.3,
+                           hidden=(512, 256), active_frac=0.05),
+    # ---- phase 10B: the K=200 gap -- over-plasticity (gain 1) and replay correlation (noise)
+    **{f"g10_k200_{name}": dict(model="ctx", schedule="local", buffer=200, policy="random", batch_wake=16,
+                                mask="refractory", cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05, **kw)
+       for name, kw in {"g1": dict(nrem_gain=1.0), "g2": dict(nrem_gain=2.0), "n02": dict(replay_noise=0.2),
+                        "g1_n02": dict(nrem_gain=1.0, replay_noise=0.2),
+                        "pb16_g1": dict(gate="pressure", theta=6.4, burst=16, nrem_gain=1.0),
+                        "pb16_n02": dict(gate="pressure", theta=6.4, burst=16, replay_noise=0.2)}.items()},
+    "g10_n02_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random", batch_wake=16,
+                           mask="refractory", cadence=1, batch_replay=16, replay_noise=0.2, hidden=(512, 256), active_frac=0.05),
+    # ---- phase 10C: split CIFAR-10 (grayscale) -- does the v9 conclusion transfer?
+    **{f"cif_{name}": dict(model="ctx", dataset="cifar", buffer=1000, policy="random",
+                           hidden=(512, 256), active_frac=0.05, **kw)
+       for name, kw in {
+           "night": dict(replay="nrem"),
+           "refr_br16": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16, mask="refractory"),
+           "none_br16": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16, mask="none"),
+           "rp4_br16": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16, mask="refr_press", theta_r=4.0),
+       }.items()},
+    "cif_ctx_none": dict(model="ctx", dataset="cifar"),
+    "cif_bp_none": dict(model="bp", dataset="cifar"),
+    "cif_bp_er_1000": dict(model="bp", dataset="cifar", buffer=1000, policy="random", replay="er"),
+    "cif_static_none": dict(model="ctx", dataset="cifar", static=True, schedule="local", buffer=1000, policy="random",
+                            batch_wake=16, cadence=1, batch_replay=16, mask="none", hidden=(512, 256), active_frac=0.05),
+    "cif_static_refr": dict(model="ctx", dataset="cifar", static=True, schedule="local", buffer=1000, policy="random",
+                            batch_wake=16, cadence=1, batch_replay=16, mask="refractory", hidden=(512, 256), active_frac=0.05),
+    "cif_static_rp4": dict(model="ctx", dataset="cifar", static=True, schedule="local", buffer=1000, policy="random",
+                           batch_wake=16, cadence=1, batch_replay=16, mask="refr_press", theta_r=4.0, hidden=(512, 256), active_frac=0.05),
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
     "static_ctx_nrem_surp_1000": dict(model="ctx", static=True, buffer=1000, policy="surprise", replay="nrem"),
 }
+
+
+# ------------------------------------------------------------------ data (phase 10: CIFAR)
+CIFAR_DIR = os.path.join(ROOT, "tmp", "dataset_cache", "cifar10")
+
+
+def load_cifar10_gray():
+    """CIFAR-10 as 32x32 luminance, per-pixel standardised on the training set.  Grayscale keeps
+    the input a single sheet, so distance-dependent connectivity keeps its geometry."""
+    cache = os.path.join(CIFAR_DIR, "gray.npz")
+    if os.path.exists(cache):
+        z = np.load(cache)
+        Xtr, ytr, Xte, yte = z["Xtr"], z["ytr"], z["Xte"], z["yte"]
+    else:
+        import pickle as pk
+        import tarfile
+        with tarfile.open(os.path.join(CIFAR_DIR, "cifar-10-python.tar.gz")) as tf:
+            def batch(name):
+                d = pk.load(tf.extractfile(f"cifar-10-batches-py/{name}"), encoding="bytes")
+                return d[b"data"], np.array(d[b"labels"], dtype=np.int64)
+            parts = [batch(f"data_batch_{i}") for i in range(1, 6)]
+            Xtr, ytr = np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
+            Xte, yte = batch("test_batch")
+
+        def gray(X):
+            X = X.reshape(-1, 3, 1024).astype(np.float32) / 255
+            return 0.299 * X[:, 0] + 0.587 * X[:, 1] + 0.114 * X[:, 2]
+        Xtr, Xte = gray(Xtr), gray(Xte)
+        os.makedirs(CIFAR_DIR, exist_ok=True)
+        np.savez_compressed(cache, Xtr=Xtr, ytr=ytr, Xte=Xte, yte=yte)
+    mu, sd = Xtr.mean(0), Xtr.std(0)
+    sd[sd < 1e-6] = 1.0
+    return (Xtr - mu) / sd, ytr, (Xte - mu) / sd, yte
+
+
+def load_data(cfg):
+    if cfg.get("dataset") == "cifar":
+        X, y, Xe, ye = load_cifar10_gray()
+        return X, y, Xe, ye, (32, 32)
+    X, y, Xe, ye = RM.load_mnist()
+    return X, y, Xe, ye, (28, 28)
 
 
 # ------------------------------------------------------------------ dentate gyrus (9C)
@@ -392,9 +488,9 @@ class Buffer:
 
 
 # ------------------------------------------------------------------ models
-def make_bp(seed, hidden):
+def make_bp(seed, hidden, n_in=784):
     torch.manual_seed(seed)
-    net = torch.nn.Sequential(torch.nn.Linear(784, hidden[0]), torch.nn.ReLU(),
+    net = torch.nn.Sequential(torch.nn.Linear(n_in, hidden[0]), torch.nn.ReLU(),
                               torch.nn.Linear(hidden[0], hidden[1]), torch.nn.ReLU(),
                               torch.nn.Linear(hidden[1], 10))
     return net, torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-3)
@@ -433,16 +529,16 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
     # weight (0 = off); both need the decoder.
     rem_gen, rem_neg = cfg.get("rem_gen", 0), cfg.get("rem_neg", 0.0)
     decoder = bool(cfg.get("decoder", False) or rem_gen or rem_neg)
-    Xtr, ytr, Xte, yte = RM.load_mnist()
+    Xtr, ytr, Xte, yte, ishape = load_data(cfg)
     seed_everything(seed)
     g = torch.Generator().manual_seed(seed)
     hidden = RM.WIDE
     hidden = tuple(cfg.get("hidden", RM.WIDE))
     if model == "bp":
-        net, opt = make_bp(seed, hidden)
+        net, opt = make_bp(seed, hidden, Xtr.shape[1])
     else:
         front = make_front(cfg, seed)
-        net = CortexNet([front.n_dg if front else 784, *hidden, 10], seed=seed, input_shape=None if front else (28, 28),
+        net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, 10], seed=seed, input_shape=None if front else ishape,
                         decoder=decoder, rem_neg=rem_neg, **dict(V7, active_frac=cfg.get("active_frac", V7["active_frac"]),
                                                                  conn_density=cfg.get("conn_density", V7["conn_density"])))
         net.front = front
@@ -512,6 +608,7 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
     out = dict(config=config, seed=seed, model=model, buffer=K, policy=policy if K else None, replay=replay if K else None,
                static=static, final_acc=final_acc, forgetting=forgetting, acc_matrix=acc_matrix.tolist(),
                buffer_classes=buf.class_counts(), fit_s=time.time() - t0)
+    globals()["LAST_NET"] = net
     if model == "ctx":
         out["overlap"] = task_overlap(net, Xte, yte, tasks)
         out["overlap_in"] = task_overlap(net, Xte, yte, tasks, layers=(0,))[0]
@@ -673,13 +770,20 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     hidden, af, night = tuple(cfg.get("hidden", RM.WIDE)), cfg.get("active_frac", V7["active_frac"]), cfg.get("night", False)
     gate, theta, delta = cfg.get("gate"), cfg.get("theta", 0.0), cfg.get("delta", 1.0)  # 9A
     batch_replay, burst = cfg.get("batch_replay", batch_replay), cfg.get("burst", 1)
+    nrem_gain = cfg.get("nrem_gain", nrem_gain)          # 10B: gentler consolidation for tiny buffers
+    replay_noise = cfg.get("replay_noise", 0.0)          # 10B: replay is variable, not verbatim
+    theta_r, frac_r = cfg.get("theta_r", 4.0), cfg.get("frac_r", 0.25)  # 10A homeostatic rotation
+    theta_s = cfg.get("theta_s", 0.25)  # 10A2: ACh gate -- rotation only while novelty is high
+    beta_nov = cfg.get("beta_nov", 1.3)  # 10A3: novelty = fast error EMA above its own slow baseline
+    surprise_ema, surprise_slow, ach_on = None, None, []
     S = [None] + [torch.zeros(s) for s in hidden]  # unit-level sleep pressure: use since last consolidation
     gate_log = []
-    Xtr, ytr, Xte, yte = RM.load_mnist()
+    Xtr, ytr, Xte, yte, ishape = load_data(cfg)
     seed_everything(seed)
     g = torch.Generator().manual_seed(seed)
     front = make_front(cfg, seed)
-    net = CortexNet([front.n_dg if front else 784, *hidden, 10], seed=seed, input_shape=None if front else (28, 28),
+    net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, 10], seed=seed,
+                    input_shape=None if front else ishape,
                     **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"])))
     net.front = front
     buf = Buffer(K, policy, g)
@@ -691,6 +795,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     replay_used, asleep_frac, eff_frac, t0 = 0, [], [], time.time()
     net.suppress = None
     gstep = 0  # waking batches since the start of the stream (cadence must not reset per epoch)
+    Sr = [None] + [torch.zeros(s) for s in hidden]  # 10A: per-unit rest pressure (discharged by rest)
     for ti, classes in enumerate(tasks):
         m = np.isin(ytr, classes)
         Xt, yt = to_t(Xtr[m]), torch.as_tensor(ytr[m])
@@ -704,6 +809,50 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                 x, a, eps = net.relax(Xb, onehot(yb), 0, 0.0)
                 if mask_policy == "refractory":  # what fired now sits out the next competition
                     net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
+                elif mask_policy == "refr_nov":
+                    # 10A3: the absolute threshold cannot compare across data sets (the static
+                    # stream's converged error sits above any theta the sequential stream dips
+                    # under), so novelty is the FAST error EMA rising above its own SLOW baseline:
+                    # adaptation, the way a neuromodulator actually measures surprise.
+                    sb = float((eps[net.L] ** 2).sum(1).mean())
+                    surprise_ema = sb if surprise_ema is None else 0.9 * surprise_ema + 0.1 * sb
+                    surprise_slow = sb if surprise_slow is None else 0.998 * surprise_slow + 0.002 * sb
+                    if surprise_ema >= beta_nov * surprise_slow:
+                        net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
+                        ach_on.append(1.0)
+                    else:
+                        net.suppress = None
+                        ach_on.append(0.0)
+                elif mask_policy == "refr_ach":
+                    # 10A2: the rotation itself is the plain refractory rule, but a global ACh-like
+                    # novelty signal decides WHEN it runs (Hasselmo): while the top-down error of the
+                    # waking stream is high the system is in encoding mode and rotates; once the
+                    # stream is predictable, rotation (and its i.i.d. price) switches off.
+                    sb = float((eps[net.L] ** 2).sum(1).mean())
+                    surprise_ema = sb if surprise_ema is None else 0.95 * surprise_ema + 0.05 * sb
+                    if surprise_ema >= theta_s:
+                        net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
+                        ach_on.append(1.0)
+                    else:
+                        net.suppress = None
+                        ach_on.append(0.0)
+                elif mask_policy in ("refr_press", "refr_frac"):
+                    # 10A: rest is forced by ACCUMULATED use (a per-unit Process S discharged by the
+                    # rest itself, Vyazovskiy 2011), not by the last batch alone.  On i.i.d. data
+                    # pressure spreads over many units, so far fewer are benched at once.
+                    sup = [None]
+                    for l in range(1, net.L):
+                        fired_now = (a[l] > 0).float().mean(0)  # fraction of the batch's samples
+                        Sr[l] = Sr[l] + fired_now
+                        if mask_policy == "refr_press":
+                            s_l = (Sr[l] >= theta_r).float()
+                        else:
+                            k_r = max(1, int(round(frac_r * Sr[l].numel())))
+                            thr_r = Sr[l].topk(k_r).values[-1]
+                            s_l = ((Sr[l] >= thr_r) & (Sr[l] > 0)).float()
+                        Sr[l] = Sr[l] * (1.0 - s_l)  # the rest they are about to take discharges S
+                        sup.append(s_l)
+                    net.suppress = sup
                 # Adam moves ~eta per step: with a batch of 64 there are 4x the steps of the
                 # batch-256 protocol, so the waking step is scaled to keep the drift per epoch equal
                 net.local_update(x, a, eps, 1e-3 * batch_wake / 256, 1e-3)
@@ -715,7 +864,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     S[l] = S[l] + fired                             # Process S: rises with use
                     use[l] = 0.9 * use[l] + 0.1 * fired            # recent use, ~10 batches
                     long_use[l] = 0.995 * long_use[l] + 0.005 * fired  # long-term use, ~200 batches
-                    if mask_policy in ("silent", "refractory"):
+                    if mask_policy in ("silent", "refractory", "refr_press", "refr_frac", "refr_ach", "refr_nov"):
                         awake.append((fired > 0).float())
                     elif mask_policy == "idle":
                         awake.append((use[l] >= use[l].median()).float())   # asleep = idle half
@@ -742,6 +891,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                 for _burst_i in range(burst if do_replay else 0):
                     Xr, yr = buf.sample(batch_replay)
                     if Xr is not None:
+                        if replay_noise:
+                            Xr = Xr + replay_noise * torch.randn(Xr.shape, generator=g)
                         # synapse masks: allowed iff pre asleep or post asleep
                         pre_awake = [torch.ones(net.sizes[0])] + [awake[l] for l in range(1, net.L)]  # input is always "awake"
                         post_awake = [None] + [awake[l] for l in range(1, net.L)] + [torch.ones(10)]
@@ -786,6 +937,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     final_acc = float((S_te.argmax(1) == yte).mean())
     T = len(tasks)
     forgetting = float(np.mean([acc_matrix[j, j] - acc_matrix[T - 1, j] for j in range(T - 1)])) if T > 1 else 0.0
+    globals()["LAST_NET"] = net
     af = np.mean(asleep_frac, axis=0).tolist() if asleep_frac else None
     ef = np.mean(eff_frac, axis=0).tolist() if eff_frac else None
     out = dict(config=config, seed=seed, model="ctx", buffer=K, policy=policy, replay="local", static=static,
@@ -793,7 +945,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                buffer_classes=buf.class_counts(), replay_used=replay_used, asleep_frac=af, eff_frac=ef,
                hidden=hidden, active_frac=af_cfg(cfg), overlap=task_overlap(net, Xte, yte, tasks),
                overlap_in=task_overlap(net, Xte, yte, tasks, layers=(0,))[0], dim=code_dim(net, Xte),
-               synops=net.last_cost["synops"], gate=gate, theta=theta,
+               synops=net.last_cost["synops"], gate=gate, theta=theta, rest_frac=(np.mean(asleep_frac, axis=0).tolist() if asleep_frac else None),
+               ach_frac=(float(np.mean(ach_on)) if ach_on else None),
                gate_signal=(float(np.mean(gate_log)) if gate_log else None), fit_s=time.time() - t0)
     print(f"  {config:26s} seed {seed}: overlap-in {out['overlap_in']:.2f}  dim {[round(v, 1) for v in out['dim']]}  "
           f"synops/sample {out['synops']:.0f}", flush=True)

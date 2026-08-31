@@ -24,6 +24,13 @@ for the full v1–v9 record:
    law, k-WTA on wide layers, single-phase T=0 learning, 30% distance-dependent connectivity,
    rate→spike conversion at T_s=8.
 
+5. **A relative novelty gate removes the i.i.d. price of rotation.** Gating the refractory
+   rotation by a fast/slow EMA ratio of the top-down error (ACh-like adaptation) keeps the
+   sequential result (90.3-90.9) while restoring static accuracy to the no-rotation level
+   (95.0 = 95.0); absolute thresholds provably do not transfer across data sets. On split
+   CIFAR-10 the v9 ordering transfers and grows (refractory 27.1 > BP+ER 25.1 > night 23.8),
+   and the static price REVERSES into a +2.5..+6.5 regularisation gain when underfitting.
+
 Falsified along the way (kept for the record): input-level DG pattern separation, generative (REM)
 replay as a substitute for episodic memory, reverse learning, surprise-gated memory writing,
 multiplicative burst coding, naive dream negative phases, deep iterative relaxation.
