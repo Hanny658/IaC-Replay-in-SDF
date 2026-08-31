@@ -348,16 +348,16 @@ error remains a substantial fraction of chance --- both scale-free.
 \draw[black!30] (x0) -- (h1); \draw[black!30] (x2) -- (h1);
 \draw[black!30] (x0) -- (h3); \draw[black!30] (x2) -- (h3);
 \draw[black!30] (h1) -- (o0); \draw[black!30] (h3) -- (o1);
-\node[align=left, anchor=west] at (2.7, 2.2)
+\node[align=left, anchor=west] at (2.35, 2.2)
   {\tikz\node[awake]{}; wake-active \quad \tikz\node[asleep]{}; silent};
-\node[align=left, anchor=west] at (2.7, 1.65)
+\node[align=left, anchor=west] at (2.35, 1.65)
   {\tikz\node[refr]{}; refractory (forced rest)};
-\node[align=left, anchor=west] at (2.7, 1.1)
+\node[align=left, anchor=west, text width=4.3cm] at (2.35, 1.1)
   {\textcolor{green!55!black}{dashed}: replay may write\\ (pre silent $\lor$ post asleep, Eq.~\ref{eq:mask})};
-\node[align=left, anchor=west] at (2.7, 0.45)
+\node[align=left, anchor=west, text width=4.3cm] at (2.35, 0.45)
   {\textcolor{black!40}{grey}: frozen for this input\\ (both endpoints awake)};
 % ---- panel (b): control loop
-\begin{scope}[xshift=8.3cm]
+\begin{scope}[xshift=8.0cm]
 \node at (0.6,3.05) {\textbf{(b)} internal control};
 \node[draw, rounded corners, minimum width=2.5cm, minimum height=0.55cm] (wake) at (1.2, 2.35) {wake stream $x_t$};
 \node[draw, rounded corners, minimum width=2.5cm, minimum height=0.55cm] (press) at (1.2, 1.45) {pressure $S_i \mathrel{+}= \bar a_i$};
@@ -366,8 +366,8 @@ error remains a substantial fraction of chance --- both scale-free.
 \node[draw, rounded corners, minimum width=2.2cm, minimum height=0.55cm] (rot) at (4.6, 1.45) {rotation $s^\ell$};
 \draw[->] (wake) -- (press);
 \draw[->] (press) -- node[right]{$\langle S\rangle_{\mathrm{asleep}} \ge \theta$} (burst);
-\draw[->, dashed] (burst.west) to[bend left=40] node[left]{discharge} (press.west);
-\draw[->] (wake.east) -| (nov.north);
+\draw[->, dashed] (burst.west) to[bend left=28] node[fill=white, inner sep=1pt]{\tiny discharge} (press.west);
+\draw[->] (wake.east) -- (nov.west);
 \draw[->] (nov) -- node[right]{novelty} (rot);
 \draw[->, dashed] (rot.south) to[bend left=25] node[below right]{\ widens asleep set} (burst.east);
 \end{scope}
