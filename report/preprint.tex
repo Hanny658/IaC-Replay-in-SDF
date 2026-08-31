@@ -27,9 +27,9 @@ Use-Dependent Unit Rotation and Isolated Micro-Batch Replay\\
 for Continual Learning Without Offline Phases}
 
 \author{%
-  \pending{author list and affiliation to be finalised}\\[2pt]
+  Hanny Zhang\\[2pt]
   \small Nanyang Technological University\\
-  \small \texttt{https://github.com/Hanny658/MLP-Cortex}}
+  \small \texttt{zh0010ai@e.ntu.edu.sg}}
 \date{Preprint, draft of \today}
 
 \begin{document}
@@ -48,7 +48,10 @@ fired sit out the next competition, (ii) an \emph{exact isolation} scheme that c
 updates to synapses invisible to the current input under $k$-winner-take-all (\kwta) dynamics,
 with per-synapse optimiser state advanced only inside the mask, and (iii) internal control signals
 --- a unit-level homeostatic pressure that triggers replay bursts, and a relative-novelty
-(fast-over-slow error) gate that decides when rotation runs. On class-incremental split-MNIST the
+(fast-over-slow error) gate that decides when rotation runs. The construction inverts the usual
+direction of non-interfering continual learning: rather than protecting past tasks while learning
+the present one, the present computation is held invariant while past memories are consolidated
+through degrees of freedom the current batch exposes as unused. On class-incremental split-MNIST the
 resulting system reaches $91.3\pm0.3\%$ with no offline phase, exceeding the best offline-night
 schedule ($90.7\pm0.4\%$), at a replay-sample cost of $\approx\!1.2\times$ the night's; masked
 replay is insensitive to replay batch size down to eight samples, whereas unmasked replay and
@@ -118,14 +121,38 @@ and REM stages \citep{sorrenti2024,robinson2022} and engineering systems such as
 offline, and clocked; none implements consolidation confined to currently unused units during
 ongoing inference.
 
-\paragraph{Gating and subnetwork methods.}
+\paragraph{Gating, subnetwork and history-dependent competition methods.}
 Context-dependent gating (XdG) activates a fixed random subnetwork per task but requires task
 identity at train and test time \citep{masse2018}; learned gates \citep{tilley2023}, dendritic
 context vectors from input prototypes \citep{iyer2022}, task-free sparsification by feedforward
 and top-down errors \citep{lassig2023}, and gradient-recovered functional masks \citep{mckee2026}
-remove the explicit label but all derive the gate from the \emph{input identity}. The rotation
-studied here is instead a function of each unit's own \emph{use history}, which, to our knowledge
-(literature search, August 2026), has no ANN precedent.
+remove the explicit label but derive the gate from the \emph{input identity}. Use-history-dependent
+suppression of competition, in itself, has classical precedents: refractory winner-take-all
+dynamics in physiological models of competitive learning \citep{kaski1994}, explicit refractory
+competitive learning in which a recent winner is temporarily barred from winning \citep{maeda1999},
+and, recently, spiking continual learners whose firing thresholds rise with each unit's activation
+history to diversify recruitment across tasks \citep{shen2024}. Our rotation differs in
+\emph{purpose}, not primitive: recently wake-active units are benched for one competition
+specifically to enlarge a dynamically reallocated \emph{replay channel} --- rotation manufactures
+plastic degrees of freedom in which consolidation can proceed concurrently with inference, rather
+than allocating representational resources across tasks.
+
+\paragraph{Null-space and parameter-isolation methods.}
+A mature line of work constructs non-interfering updates by protecting \emph{previous} tasks:
+projecting new-task gradients orthogonally to old-task gradient or activation subspaces
+\citep{farajtabar2020,saha2021}, training in the null space of accumulated feature covariance
+\citep{wangnscl2021}, combining $k$-winner sparsity and heterogeneous dropout with such
+projections \citep{abbasi2022}, or freezing pruned-and-frozen subnetworks
+\citep{golkar2019,mallya2018}. Our construction inverts the protected direction: the
+\emph{ongoing wake computation} is held invariant while \emph{old-memory replay} is written into
+degrees of freedom that the current batch's exact sparse support exposes as instantaneously
+invisible --- no stored bases, SVDs, or task masks, and the ``null space'' changes every batch for
+free. \citet{mckee2026} note that optimiser state and decoupled weight decay can break structural
+guarantees even at zero gradient, and \citet{bricken2023} analyse stale momentum in sparse
+learners; we adopt the corresponding requirement (mask-confined moments) as part of the exactness
+construction rather than claiming its discovery. Replay \emph{scheduling} has likewise been
+studied as a learned policy \citep{klasson2023}; our contribution there is the specific
+unit-level use-pressure controller and its empirical dissociation from novelty triggering.
 
 \paragraph{Complementary learning systems.}
 CLS-ER maintains fast/slow EMA copies of the weights as semantic memories \citep{arani2022} and
@@ -229,9 +256,11 @@ M^\ell_{ij} \;=\; \mathbf{1}\big[\, j \notin \mathcal{A}^{\ell-1}(x) \;\lor\; i 
 \label{eq:mask}
 \end{equation}
 i.e.\ a synapse may take the replay update iff its presynaptic unit is silent for the current
-input or its postsynaptic unit is asleep. Optimiser state (first and second moments) advances
-\emph{only} inside the mask, so momentum cannot leak the update outside it. The readout row
-remains plastic (old classes must stay calibrated).
+input or its postsynaptic unit is asleep. We enforce the same constraint on the per-synapse
+optimiser state (first and second moments advance \emph{only} inside the mask): as
+\citet{mckee2026} caution and \citet{bricken2023} analyse for sparse learners, unmasked momentum
+would otherwise re-inject the isolated update into awake synapses, voiding the guarantees below.
+The readout row remains plastic (old classes must stay calibrated).
 
 \begin{proposition}[Pre-silent updates are exactly invisible]
 \label{prop:pre}
@@ -302,7 +331,11 @@ $\bar e_s$, $\alpha_s{=}0.002$, rotation runs only while
 \label{eq:nov}
 \end{equation}
 i.e.\ while the stream is \emph{new relative to the learner's own recent history} (an ACh-like
-adaptation signal \citep{hasselmo2006}). Absolute thresholds provably cannot serve here: the
+adaptation signal \citep{hasselmo2006}). Monitoring streaming error with exponentially weighted
+averages is standard in concept-drift detection \citep{ross2012}, and related loss-ratio triggers
+appear in concurrent continual-learning work; we claim no priority for the detector itself ---
+only for what it gates (the rotation, hence the replay channel's width) and for the unmastered
+clause below. Absolute thresholds provably cannot serve here: the
 converged error of a ten-class i.i.d.\ stream exceeds any level a two-class task dips under, and
 we observe exactly this failure (gate open $100\%$ of the time on static MNIST, $95\%$ on CIFAR,
 for any threshold that behaves on split-MNIST).
@@ -554,7 +587,8 @@ protection: with nothing clamping the network, a small noisy batch at $3\times$ 
 moves the whole weight state.
 
 \paragraph{Correspondence with biology.}
-The refractory rule mirrors the causal finding of \citet{driessen2026} that ON/OFF
+We treat the biology as motivating analogy, not as a claim of mechanistic equivalence. The
+refractory rule mirrors the causal finding of \citet{driessen2026} that ON/OFF
 \emph{alternation}, not tonic silencing, discharges local sleep pressure and rescues memory ---
 our silent-mask control (their tonic condition) is reliably worse. The dissociation of triggers
 --- homeostatic for waking consolidation, novelty-timed for full nights --- is a testable
@@ -566,7 +600,9 @@ under chronic underfitting) may bear on why local sleep in vivo both impairs beh
 All results are at MLP scale on MNIST/CIFAR variants with three seeds; BP+ER overtakes the local
 learner on feature-based CIFAR, bounding the regime of our headline comparison; the progress
 gate keeps a $0.7$-point static residue; and the novelty claims rest on our own literature
-search (August 2026).
+search (August 2026); individual primitives --- refractory competition, sparse or null-space
+isolation, replay, adaptive scheduling --- all have ancestors, and the claimed contribution is
+their combination into concurrent, exactly isolated consolidation.
 
 % ---------------------------------------------------------------- 7
 \section{Future Work}
@@ -595,6 +631,8 @@ which sharpens, rather than blurs, the division of labour between wake and sleep
 % ---------------------------------------------------------------- refs
 \begin{thebibliography}{99}\small
 
+\bibitem[Abbasi et al.(2022)]{abbasi2022} Abbasi, A., Nooralinejad, P., Braverman, V., Pirsiavash, H., Kolouri, S. (2022). Sparsity and heterogeneous dropout for continual learning in the null space of neural activations. \emph{CoLLAs}, PMLR 199.
+
 \bibitem[Akrout et al.(2019)]{akrout2019} Akrout, M., Wilson, C., Humphreys, P., Lillicrap, T., Tweed, D. (2019). Deep learning without weight transport. \emph{NeurIPS 32}.
 
 \bibitem[Arani et al.(2022)]{arani2022} Arani, E., Sarfraz, F., Zonooz, B. (2022). Learning fast, learning slow: A general continual learning method based on complementary learning system. \emph{ICLR}.
@@ -611,7 +649,11 @@ which sharpens, rather than blurs, the division of labour between wake and sleep
 
 \bibitem[Driessen et al.(2026)]{driessen2026} Driessen, K., Squarcio, F., Tononi, G., Cirelli, C. (2026). Induction of cortical ON/OFF periods in awake mice fulfills sleep functions. \emph{Nature Neuroscience} 29, 1954--1965.
 
+\bibitem[Farajtabar et al.(2020)]{farajtabar2020} Farajtabar, M., Azizan, N., Mott, A., Li, A. (2020). Orthogonal gradient descent for continual learning. \emph{AISTATS}, PMLR 108.
+
 \bibitem[Golden et al.(2022)]{golden2022} Golden, R., Delanois, J.E., Sanda, P., Bazhenov, M. (2022). Sleep prevents catastrophic forgetting in spiking neural networks by forming a joint synaptic weight representation. \emph{PLoS Computational Biology} 18, e1010628.
+
+\bibitem[Golkar et al.(2019)]{golkar2019} Golkar, S., Kagan, M., Cho, K. (2019). Continual learning via neural pruning. \emph{arXiv:1903.04476}.
 
 \bibitem[Harun et al.(2023)]{harun2023} Harun, M.Y., Gallardo, J., Hayes, T.L., Kemker, R., Kanan, C. (2023). SIESTA: Efficient online continual learning with sleep. \emph{TMLR}.
 
@@ -621,6 +663,10 @@ which sharpens, rather than blurs, the division of labour between wake and sleep
 
 \bibitem[Kapoor et al.(2026)]{kapoor2026} Kapoor, K., Mackey, W., Aloimonos, Y., Lin, X. (2026). HiCL: Hippocampal-inspired continual learning. \emph{AAAI}.
 
+\bibitem[Kaski and Kohonen(1994)]{kaski1994} Kaski, S., Kohonen, T. (1994). Winner-take-all networks for physiological models of competitive learning. \emph{Neural Networks} 7, 973--984.
+
+\bibitem[Klasson et al.(2023)]{klasson2023} Klasson, M., Kjellstr\"om, H., Zhang, C. (2023). Learn the time to learn: Replay scheduling in continual learning. \emph{TMLR}.
+
 \bibitem[Kolen and Pollack(1994)]{kolen1994} Kolen, J.F., Pollack, J.B. (1994). Backpropagation without weight transport. \emph{IEEE ICNN}.
 
 \bibitem[Kubo et al.(2025)]{kubo2025} Kubo, Y., Delanois, J.E., Bazhenov, M. (2025). Toward lifelong learning in equilibrium propagation: Sleep-like and awake rehearsal for enhanced stability. \emph{arXiv:2508.14081}.
@@ -628,6 +674,10 @@ which sharpens, rather than blurs, the division of labour between wake and sleep
 \bibitem[L\"assig et al.(2023)]{lassig2023} L\"assig, F., Aceituno, P.V., Sacramento, J., Grewe, B.F. (2023). Bio-inspired, task-free continual learning through activity regularization. \emph{Biological Cybernetics} 117, 345--361.
 
 \bibitem[Litwin-Kumar et al.(2017)]{litwin2017} Litwin-Kumar, A., Harris, K.D., Axel, R., Sompolinsky, H., Abbott, L.F. (2017). Optimal degrees of synaptic connectivity. \emph{Neuron} 93, 1153--1164.
+
+\bibitem[Maeda and Miyajima(1999)]{maeda1999} Maeda, M., Miyajima, H. (1999). Competitive learning methods with refractory and creative approaches. \emph{IEICE Trans.\ Fundamentals} E82-A(9), 1825--1833.
+
+\bibitem[Mallya and Lazebnik(2018)]{mallya2018} Mallya, A., Lazebnik, S. (2018). PackNet: Adding multiple tasks to a single network by iterative pruning. \emph{CVPR}.
 
 \bibitem[Masse et al.(2018)]{masse2018} Masse, N.Y., Grant, G.D., Freedman, D.J. (2018). Alleviating catastrophic forgetting using context-dependent gating and synaptic stabilization. \emph{PNAS} 115, E10467--E10475.
 
@@ -639,7 +689,13 @@ which sharpens, rather than blurs, the division of labour between wake and sleep
 
 \bibitem[Robinson et al.(2022)]{robinson2022} Robinson, B.S., Lau, C.W., New, A., Nichols, S.M., Johnson, E.C., Wolmetz, M., Coon, W.G. (2022). Continual learning benefits from multiple sleep mechanisms: NREM, REM, and synaptic downscaling. \emph{arXiv:2209.05245}.
 
+\bibitem[Ross et al.(2012)]{ross2012} Ross, G.J., Adams, N.M., Tasoulis, D.K., Hand, D.J. (2012). Exponentially weighted moving average charts for detecting concept drift. \emph{Pattern Recognition Letters} 33, 191--198.
+
+\bibitem[Saha et al.(2021)]{saha2021} Saha, G., Garg, I., Roy, K. (2021). Gradient projection memory for continual learning. \emph{ICLR}.
+
 \bibitem[Shen et al.(2021)]{shen2021} Shen, Y., Dasgupta, S., Navlakha, S. (2021). Algorithmic insights on continual learning from fruit flies. \emph{arXiv:2107.07617}.
+
+\bibitem[Shen et al.(2024)]{shen2024} Shen, J., Ni, W., Xu, Q., Tang, H. (2024). Efficient spiking neural networks with sparse selective activation for continual learning. \emph{AAAI} 38, 611--619.
 
 \bibitem[Sorrenti et al.(2024)]{sorrenti2024} Sorrenti, A., Bellitto, G., Proietto Salanitri, F., Pennisi, M., Palazzo, S., Spampinato, C. (2024). Wake--sleep consolidated learning. \emph{arXiv:2401.08623}.
 
@@ -650,6 +706,8 @@ which sharpens, rather than blurs, the division of labour between wake and sleep
 \bibitem[Tononi and Cirelli(2014)]{tononi2014} Tononi, G., Cirelli, C. (2014). Sleep and the price of plasticity: From synaptic and cellular homeostasis to memory consolidation and integration. \emph{Neuron} 81, 12--34.
 
 \bibitem[Vyazovskiy et al.(2011)]{vyazovskiy2011} Vyazovskiy, V.V., Olcese, U., Hanlon, E.C., Nir, Y., Cirelli, C., Tononi, G. (2011). Local sleep in awake rats. \emph{Nature} 472, 443--447.
+
+\bibitem[Wang et al.(2021)]{wangnscl2021} Wang, S., Li, X., Sun, J., Xu, Z. (2021). Training networks in null space of feature covariance for continual learning. \emph{CVPR}.
 
 \bibitem[Whittington and Bogacz(2017)]{whittington2017} Whittington, J.C.R., Bogacz, R. (2017). An approximation of the error backpropagation algorithm in a predictive coding network with local Hebbian synaptic plasticity. \emph{Neural Computation} 29, 1229--1262.
 
