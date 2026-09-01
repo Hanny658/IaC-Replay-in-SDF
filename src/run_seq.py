@@ -262,6 +262,9 @@ CONFIGS = {
                                                 batch_wake=16, cadence=1, batch_replay=16, mask="refractory", hidden=(512, 256), active_frac=0.05),
     "static_loc16_none_br16_w512s5": dict(model="ctx", schedule="local", static=True, buffer=1000, policy="random",
                                           batch_wake=16, cadence=1, batch_replay=16, mask="none", hidden=(512, 256), active_frac=0.05),
+    # 12c: the missing Adam-silent static cell (does the gate's adaptive value exist under Adam?)
+    "static_loc16_silent_br16_w512s5": dict(model="ctx", schedule="local", static=True, buffer=1000, policy="random",
+                                            batch_wake=16, cadence=1, batch_replay=16, mask="silent", hidden=(512, 256), active_frac=0.05),
     # 9A follow-up 5: the batch-size floor (2, 1 replay samples per waking batch) and the control that
     # separates isolation from batch size (unmasked / silent replay at the same tiny batch).
     **{f"g9a_w512s5_{name}": dict(model="ctx", buffer=1000, policy="random", schedule="local", batch_wake=16,

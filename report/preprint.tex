@@ -57,7 +57,7 @@ memories while learning the present, as in null-space methods) collapses to $81.
 identical machinery; masked
 replay is insensitive to replay batch size down to eight samples, whereas unmasked replay and
 offline nights degrade sharply at the same sizes. The i.i.d.\ cost of rotation ($1.3$--$3.0$
-points) is eliminated by the relative-novelty gate on learnable streams ($95.0\%$ vs.\ $95.0\%$
+points) is eliminated, under masked Adam, by the relative-novelty gate on learnable streams ($95.0\%$ vs.\ $95.0\%$
 without rotation) and reverses into a $+2.5$ to $+6.5$ point \emph{gain} on harder data
 (split CIFAR-10), where the full ordering of methods transfers. We further show that
 surprise-triggered waking replay fails at any volume, that the trigger must be homeostatic, and
@@ -522,7 +522,9 @@ never becomes predictable, so rotation shuts off exactly where it helps). The pr
 \eqref{eq:prog} resolves this with one setting across all four regimes: split CIFAR-10 sequential
 $27.2\pm0.7$ and static $25.3\pm1.0$ (both $=$ always-on rotation), split-MNIST $90.4\pm0.9$,
 i.i.d.\ MNIST $94.3\pm0.2$ at $\gamma{=}0.5$ --- retaining a residual $0.7$-point static cost
-relative to the pure novelty gate on easy streams, the price of the unmastered clause.
+relative to the pure novelty gate on easy streams, the price of the unmastered clause. (All
+gate numbers in this subsection use masked Adam; the gate's adverse interaction with the
+stateless optimiser is dissected in Section~\ref{sec:ablation}.)
 
 \begin{figure}[t]
 \centering
@@ -615,7 +617,7 @@ $16$ after every waking batch), three seeds each.
 \caption{\textbf{Component ablation of the consolidation mechanism.} Sequential $=$ final
 accuracy on split-MNIST; static $=$ i.i.d.\ MNIST (the axis that must not degrade). All rows use
 the $512$--$256$/$5\%$ substrate except the backprop references (dense $256$--$128$). Dashes:
-combination not applicable.}
+combination not applicable. Bold: column best.}
 \label{tab:ablation}
 \small
 \begin{tabular}{@{}lcc@{}}
@@ -623,9 +625,9 @@ combination not applicable.}
 Variant & Sequential & i.i.d.\ (static) \\
 \midrule
 \multicolumn{3}{@{}l}{\emph{Full system and single knockouts (stateless SGD, $\eta=0.02$)}}\\
-full: exact isolation $+$ rotation $+$ progress gate & $\mathbf{89.1\pm0.3}$ & $\mathbf{95.0\pm0.6}$ \\
-$-$ gate (rotation always on) & $92.0\pm0.7$ & $93.4\pm0.2$ \\
-$-$ rotation (pre-silent isolation only) & $89.0\pm0.5$ & $96.0\pm0.1$ \\
+full: exact isolation $+$ rotation $+$ progress gate & $89.1\pm0.3$ & $95.0\pm0.6$ \\
+$-$ gate (rotation always on) & $\mathbf{92.0\pm0.7}$ & $93.4\pm0.2$ \\
+$-$ rotation (pre-silent isolation only) & $89.0\pm0.5$ & $\mathbf{96.0\pm0.1}$ \\
 $-$ isolation (unmasked interleaved replay) & $84.1\pm4.1$ & $95.7\pm0.1$ \\
 $-$ replay (no episodic buffer; Adam) & $19.5\pm0.0$ & $95.1\pm0.1$ \\
 \midrule
@@ -654,13 +656,20 @@ $89.0$ for the pre-silent channel alone), isolation $+7.9$ with a six-fold varia
 floor). The static column identifies who pays: rotation is the only statically costly
 component ($93.4$ always-on against $96.0$ for isolation without rotation --- the highest
 static cell in the table, above even the no-buffer baseline), and the progress gate refunds
-the price in full ($95.0$, at the $95.1$ ceiling). The gate, however, is not free under SGD:
-gated rotation loses $2.9$ sequential points against always-on ($89.1$ vs.\ $92.0$) --- a
-gated system behaves almost exactly like the rotation-free one on the sequential axis
-($89.1$ vs.\ $89.0$) --- where the same gate under Adam costs only $0.4$ ($90.4$ vs.\
-$90.8$). The stateless gain requires rotation to run on every batch; with SGD one therefore
-chooses between the sequential operating point ($92.0/93.4$, always-on) and the static one
-($89.1/95.0$, gated), a genuine trade that the weaker Adam system does not face.
+the price in full ($95.0$, at the $95.1$ ceiling). The honest headline of the table, however,
+is that the full conjunction is the best system \emph{nowhere}: against always-on rotation it
+loses $2.9$ sequential points ($89.1$ vs.\ $92.0$), and against the rotation-free system it is
+sequentially identical ($89.1$ vs.\ $89.0$) yet a full static point worse ($95.0\pm0.6$ vs.\
+$96.0\pm0.1$). Under SGD the gated point is weakly dominated: the system has exactly two useful
+operating points --- always-on rotation ($92.0/93.4$) for sequential streams, plain silent
+isolation ($89.0/96.0$) for stationary ones --- and the gate manufactures no third. The
+mechanism is the half-cadence effect again: the stateless gain requires rotation on
+\emph{every} batch, and within each task the gate closes as soon as the task is mastered ---
+precisely the batches on which continuous rotation earns its $+3.0$. Under Adam the same gate
+is genuinely adaptive: it captures most of rotation's sequential value ($90.4$ gated vs.\
+$87.8$ silent) at a modest static cost ($94.3$ vs.\ $95.0\pm0.3$ for silent
+isolation), an undominated compromise. The gate's value is thus a property of the optimiser it wraps,
+not of the gate alone.
 
 The middle block tests the exactness requirement itself and yields the sharpest surprise of
 the table. Propositions~\ref{prop:pre}--\ref{prop:post} require Adam's moments to advance only
@@ -773,8 +782,8 @@ under chronic underfitting) may bear on why local sleep in vivo both impairs beh
 \paragraph{Honest limits.}
 All results are at MLP scale on MNIST/CIFAR variants with three seeds; BP+ER overtakes the local
 learner on feature-based CIFAR, bounding the regime of our headline comparison; the progress
-gate keeps a $0.7$-point static residue under Adam and costs $2.9$ sequential points under the
-stateless optimiser (Section~\ref{sec:ablation}); and the novelty claims rest on our own literature
+gate keeps a $0.7$-point static residue under Adam and is weakly dominated by rotation-free
+isolation under the stateless optimiser (Section~\ref{sec:ablation}); and the novelty claims rest on our own literature
 search (August 2026); individual primitives --- refractory competition, sparse or null-space
 isolation, replay, adaptive scheduling --- all have ancestors, and the claimed contribution is
 their combination into concurrent, exactly isolated consolidation.
@@ -785,8 +794,9 @@ their combination into concurrent, exactly isolated consolidation.
 
 (i) Explaining why backpropagation with replay overtakes the local learner specifically on
 feature representations (dense connectivity, per-synapse adaptivity, or the learning rule
-itself); (ii) reconciling the progress gate with the stateless optimiser, whose gain requires
-rotation on every batch (Section~\ref{sec:ablation});
+itself); (ii) a rotation gate compatible with the stateless optimiser --- since the SGD gain requires
+rotation on every batch, a useful gate needs block-wise switching with a minimum on-duration
+(Section~\ref{sec:ablation});
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
 (iv) convolutional and deeper stacks; (v) a throughput theory of the isolated channel predicting
 the required replay cadence from $\rho_\ell$, code overlap and the interference rate;

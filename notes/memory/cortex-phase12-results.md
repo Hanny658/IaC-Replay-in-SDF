@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: b260108a-3c8a-4668-bb0c-63a09e66c838
-  modified: 2026-09-01T09:45:51.378Z
+  modified: 2026-09-01T11:59:38.273Z
 ---
 
 Ran 2026-08-31 night after an external novelty review (`MLP-Cortex/report/critic.md`).  Review
@@ -37,10 +37,15 @@ Results (w512s5, K=1000, bw16, br16 cad1 unless noted, 3 seeds):
    92.0 ~ leaked 91.9 > confined 90.8.  State confinement is required by Prop 1 (exactness), but
    for ACCURACY it is Adam's handicap (staleness); statelessness alone keeps both.  Three
    manuscript passages reworded accordingly.
-2. Full system SGD+refr+prog05: seq 89.1 +-0.3 / static 95.0 +-0.6.  Gate refunds the static
-   price fully under SGD (ceiling 95.1) but costs 2.9 seq (Adam gate cost only 0.4); gated ~
-   silent (89.1 vs 89.0).  "v12 default = refr+SGD+prog gate" is FALSIFIED as a dominant config:
-   SGD has two operating points, 92.0/93.4 (always-on) vs 89.1/95.0 (gated).
+2. Full system SGD+refr+prog05: seq 89.1 +-0.3 / static 95.0 +-0.6 -- WEAKLY DOMINATED by
+   SGD+silent (89.0/96.0): seq tie within noise, static a full point worse.  Under SGD the gate
+   manufactures no third operating point; the two real ones are always-on (92.0/93.4) and silent
+   (89.0/96.0).  "v12 default = refr+SGD+prog gate" FALSIFIED.  12c: the missing Adam-silent
+   static cell (static_loc16_silent_br16_w512s5) = 95.0 +-0.3, so under Adam the gate IS an
+   undominated compromise (gated 90.4/94.3 vs silent 87.8/95.0: +2.6 seq for -0.7 static) --
+   the gate's adaptive value is optimiser-specific.  Manuscript revised accordingly (bold =
+   column best; abstract's gate claim scoped to masked Adam; future work: block-wise
+   minimum-on-duration gates).
 3. SGD+silent (no rotation) 89.0 +-0.5 / static 96.0 +-0.1 = highest static cell (rotation is the
    only statically costly component; SGD lifts silent from Adam's 87.8).  static SGD unmasked
    95.7; no-buffer w512s5: seq 19.5, static 95.1.
