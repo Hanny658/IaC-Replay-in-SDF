@@ -260,8 +260,9 @@ i.e.\ a synapse may take the replay update iff its presynaptic unit is silent fo
 input or its postsynaptic unit is asleep. We enforce the same constraint on the per-synapse
 optimiser state (first and second moments advance \emph{only} inside the mask): as
 \citet{mckee2026} caution and \citet{bricken2023} analyse for sparse learners, unmasked momentum
-would otherwise re-inject the isolated update into awake synapses, voiding the guarantees below.
-The readout row remains plastic (old classes must stay calibrated).
+would otherwise re-inject the isolated update into awake synapses, voiding the exactness
+guarantees below; the accuracy consequences of this choice are dissected in
+Section~\ref{sec:ablation}. The readout row remains plastic (old classes must stay calibrated).
 
 \begin{proposition}[Pre-silent updates are exactly invisible]
 \label{prop:pre}
@@ -458,8 +459,7 @@ once consolidation runs during wake, the offline phase is redundant at this buff
 \subsection{Isolation stabilises micro-batch replay}
 Figure~\ref{fig:batch}: masked refractory replay is flat in replay batch size from $256$ down to
 $8$ samples ($90.4\to90.5\%$), while unmasked ER falls to $83.9\pm1.2$, the silent mask to
-$87.8\pm2.1$, and the offline night to $81.0\pm1.6$ at batch $16$. Isolation --- including
-optimiser state confined to the mask --- is what makes replay affordable: the earlier
+$87.8\pm2.1$, and the offline night to $81.0\pm1.6$ at batch $16$. Masking the replay weight update is what makes replay affordable: the earlier
 ``$39\times$'' cost of inference-time consolidation was an artefact of counting $256$-sample
 batches.
 
@@ -487,12 +487,15 @@ perturbing the live computation, a double loss. The protected direction is thus 
 choice but a $9.5$-point empirical effect. Second, replacing masked Adam with \emph{stateless}
 heavy-ball SGD inside the same isolation raises the ceiling: $\mathbf{92.0\pm0.7\%}$ sequential
 and $93.4\pm0.2\%$ static (vs.\ $90.8/92.0$ for masked Adam; unmasked SGD control
-$84.1\pm4.1$). Mask-confined optimiser state is necessary \emph{for Adam}; carrying no state at
-all is simpler and better still --- and closer to biology. Third, \emph{soft} rotation (halving,
+$84.1\pm4.1$). Carrying no state at all is simpler and better still --- and closer to biology;
+the ablation in Section~\ref{sec:ablation} traces masked Adam's deficit to the confinement of
+its moments, which the exactness guarantee demands but accuracy, it turns out, does not. Third, \emph{soft} rotation (halving,
 rather than silencing, recent winners) loses on both axes ($88.4\pm0.7$ sequential,
 $86.0\pm1.3$ static): all-or-none OFF periods beat turned-down gain, echoing the biological
 finding that tonic firing-rate reduction does not discharge local sleep pressure while ON/OFF
-alternation does \citep{driessen2026}.
+alternation does \citep{driessen2026}. Table~\ref{tab:ablation} in
+Section~\ref{sec:ablation} collects these controls together with the remaining component
+knockouts and the substrate ladder.
 
 \subsection{When replay must be rare: homeostatic bursts, never surprise}
 Figure~\ref{fig:batch} (right): at ${\sim}12\%$ of replay events, clocked bursts of $8$--$16$
@@ -594,6 +597,155 @@ learning; surprise-gated memory \emph{writing}; multiplicative burst coding; abs
 rotation gates; pruning anchored to sparse replay bursts (above); soft (gain-reduction) rotation
 and mirror-direction isolation (Section~\ref{sec:direction}).
 
+% ---------------------------------------------------------------- 5b
+\section{Ablation Study}
+\label{sec:ablation}
+
+The system under test is a conjunction of five ingredients: a biologically constrained
+substrate, the exact isolation mask \eqref{eq:mask}, the refractory rotation, a stateless
+optimiser, and the progress-keyed gate \eqref{eq:prog}. This section removes or replaces one
+ingredient at a time, at two levels: the consolidation mechanism (Table~\ref{tab:ablation}) and
+the substrate beneath it (Table~\ref{tab:substrate}). Every mechanism cell shares the same
+substrate ($512$--$256$ hidden, $5\%$ \kwta{}, $30\%$ distance-dependent connectivity), the same
+buffer ($K{=}1000$, random writing) and the same replay budget (waking batch $16$, replay batch
+$16$ after every waking batch), three seeds each.
+
+\begin{table}[t]
+\centering
+\caption{\textbf{Component ablation of the consolidation mechanism.} Sequential $=$ final
+accuracy on split-MNIST; static $=$ i.i.d.\ MNIST (the axis that must not degrade). All rows use
+the $512$--$256$/$5\%$ substrate except the backprop references (dense $256$--$128$). Dashes:
+combination not applicable.}
+\label{tab:ablation}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Variant & Sequential & i.i.d.\ (static) \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Full system and single knockouts (stateless SGD, $\eta=0.02$)}}\\
+full: exact isolation $+$ rotation $+$ progress gate & $\mathbf{89.1\pm0.3}$ & $\mathbf{95.0\pm0.6}$ \\
+$-$ gate (rotation always on) & $92.0\pm0.7$ & $93.4\pm0.2$ \\
+$-$ rotation (pre-silent isolation only) & $89.0\pm0.5$ & $96.0\pm0.1$ \\
+$-$ isolation (unmasked interleaved replay) & $84.1\pm4.1$ & $95.7\pm0.1$ \\
+$-$ replay (no episodic buffer; Adam) & $19.5\pm0.0$ & $95.1\pm0.1$ \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Optimiser state under the mask (rotation always on, Adam)}}\\
+moments confined to the mask & $90.8\pm0.1$ & $92.0\pm0.3$ \\
+moments advancing outside the mask & $91.9\pm0.4$ & $92.8\pm0.4$ \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Replacing the construction (Adam)}}\\
+offline night instead of concurrent replay, same substrate & $84.1\pm1.3$ & --- \\
+\quad the same night on its preferred narrow substrate & $90.7\pm0.4$ & --- \\
+mirror direction: protect the past (Section~\ref{sec:direction}) & $81.3\pm2.9$ & $92.1\pm0.1$ \\
+soft rotation: gain $0.5$ instead of $0$ & $88.4\pm0.7$ & $86.0\pm1.3$ \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{External references}}\\
+unmasked ER at the same budget (Adam) & $86.9\pm1.2$ & $94.8\pm0.2$ \\
+backprop ($+$ER sequential; plain static), dense & $89.3\pm0.8$ & $97.5\pm0.0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Reading the component table}
+Read top-down, the first block prices each ingredient by what its removal costs the
+sequential axis under the stateless optimiser: rotation is worth $+3.0$ points ($92.0$ vs.\
+$89.0$ for the pre-silent channel alone), isolation $+7.9$ with a six-fold variance reduction
+($92.0\pm0.7$ vs.\ $84.1\pm4.1$), and replay is worth everything ($19.5$ is the forgetting
+floor). The static column identifies who pays: rotation is the only statically costly
+component ($93.4$ always-on against $96.0$ for isolation without rotation --- the highest
+static cell in the table, above even the no-buffer baseline), and the progress gate refunds
+the price in full ($95.0$, at the $95.1$ ceiling). The gate, however, is not free under SGD:
+gated rotation loses $2.9$ sequential points against always-on ($89.1$ vs.\ $92.0$) --- a
+gated system behaves almost exactly like the rotation-free one on the sequential axis
+($89.1$ vs.\ $89.0$) --- where the same gate under Adam costs only $0.4$ ($90.4$ vs.\
+$90.8$). The stateless gain requires rotation to run on every batch; with SGD one therefore
+chooses between the sequential operating point ($92.0/93.4$, always-on) and the static one
+($89.1/95.0$, gated), a genuine trade that the weaker Adam system does not face.
+
+The middle block tests the exactness requirement itself and yields the sharpest surprise of
+the table. Propositions~\ref{prop:pre}--\ref{prop:post} require Adam's moments to advance only
+inside the mask: state advancing outside re-injects the replay gradient into awake synapses
+through the next unmasked waking step, and output-neutrality is lost. Empirically, however,
+the leak \emph{helps} --- $91.9\pm0.4$ vs.\ $90.8\pm0.1$ sequential, $92.8\pm0.4$ vs.\
+$92.0\pm0.3$ static. Exact state confinement, not isolation, is what held masked Adam below
+the stateless optimiser: moments frozen outside each batch's mask go stale across a unit's
+on/off cycles \citep{bricken2023}, and either remedy --- letting the state track every
+gradient (surrendering the guarantee) or carrying no state at all --- recovers the same
+$\approx\!1$ point. Statelessness is the only choice that keeps the guarantee and the
+accuracy at once: the exactness of Propositions~\ref{prop:pre}--\ref{prop:post} costs about
+one point when bought from Adam, and nothing when bought from heavy-ball SGD.
+
+Two further notes complete the picture. The stateless gain also vanishes at half cadence:
+SGD with replay batch $64$ every other waking batch reaches $91.3\pm0.3$, identical to masked
+Adam on the same schedule --- statelessness pays only while consolidation runs continuously.
+And the replacement block collects, in one place, that every structural alternative loses on
+the sequential axis: the offline night on this substrate ($84.1$), the protected-past
+direction ($81.3$), softened rotation ($88.4$), unmasked ER ($86.9$), with the strongest
+competitor --- the night on its preferred narrow substrate ($90.7$) --- still below the
+always-on operating point.
+
+\subsection{The price of the substrate}
+
+Table~\ref{tab:substrate} traces the path from a dense backpropagation MLP to the substrate
+used throughout, on i.i.d.\ MNIST where each constraint's cost is cleanest. The upper block is
+cumulative; the lower block replaces one ingredient at its stage and is to be compared with
+the matching cumulative row.
+
+\begin{table}[t]
+\centering
+\caption{\textbf{Substrate ablation} on i.i.d.\ MNIST ($256$--$128$ hidden core, three seeds).
+``Syn.\ ops'' is the fraction of the dense MLP's synaptic operations in one forward pass.
+Upper block: constraints added cumulatively; lower block: one ingredient replaced at its stage.}
+\label{tab:substrate}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Substrate & Accuracy & Syn.\ ops \\
+\midrule
+dense backpropagation MLP (autograd reference) & $97.7\pm0.1$ & 1.00 \\
+local burst-error learner, unconstrained & $97.8\pm0.1$ & 0.85 \\
+$+$ bounded error, Dale's law, sign-concordant feedback (no transport) & $97.1\pm0.0$ & 0.85 \\
+$+$ \kwta{} $10\%$ & $97.0\pm0.2$ & 0.80 \\
+$+$ relaxation $T{=}5$ & $97.0\pm0.1$ & 0.80 \\
+$+$ $30\%$ distance-dependent connectivity & $96.5\pm0.2$ & 0.24 \\
+$+$ burst gate and burst baseline & $96.3\pm0.2$ & 0.24 \\
+$+$ single-phase burst sweep replacing relaxation (\emph{final substrate}) & $96.5\pm0.1$ & 0.24 \\
+\midrule
+random wiring instead of distance-dependent, equal density & $95.4\pm0.0$ & 0.24 \\
+one settling step ($T{=}1$) instead of five & $17.9\pm6.8$ & 0.80 \\
+weight transport restored (mirroring, no KP decay) & $96.3\pm0.2$ & 0.24 \\
+Kolen--Pollack decay removed & $96.3\pm0.1$ & 0.24 \\
+heavy-ball SGD instead of Adam ($\eta=0.02$) & $95.2\pm0.3$ & 0.24 \\
+\kwta{} $5\%$ / $2\%$ instead of $10\%$ & $95.9\pm0.1$ / $94.2\pm0.2$ & 0.79/0.78 \\
+multiplicative burst coding & $78.8\pm1.9$ & 0.24 \\
+training on $T_s{=}8$ spike counts & $80.0\pm0.8$ & 0.24 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The cumulative ladder prices the entire biological constraint set at $1.2$ points below the
+dense backpropagation reference ($97.7\to96.5$) for $4\times$ fewer synaptic operations per
+pass; the local burst-error objective itself costs nothing ($97.8$ unconstrained). No single
+constraint is expensive: the bounded-error/Dale/no-transport trio costs $0.7$, $10\%$
+\kwta{} one tenth of a point, and the $70\%$ connectivity cut half a point --- of which
+distance-dependent wiring recovers $+1.1$ over random wiring at equal density. The lower
+block adds three cautions. Settling cannot merely be shortened ($T{=}1$ collapses to
+$17.9$); the single-phase burst sweep is the principled replacement, matching the $T{=}5$
+accuracy in a single pass. The Kolen--Pollack decay and even fully restored weight transport
+are accuracy-neutral at this scale --- the decay earns its keep as a regulariser on harder
+inputs, not as an aligner. And the two spiking-flavoured training schemes fail outright:
+spiking is affordable at \emph{inference} (the energy measurements above), not as a
+training-time code.
+
+Finally, the two tables disagree about the optimiser in an instructive way: on the plain
+substrate SGD \emph{loses} $1.3$ points to Adam ($95.2$ vs.\ $96.5$), yet inside the
+isolated-consolidation loop it wins on both axes. Per-synapse adaptive state is an asset
+while every synapse trains on every batch and a liability once updates become intermittently
+mask-confined --- the staleness mechanism of Table~\ref{tab:ablation}'s middle block seen
+from the other side. The optimiser is not a neutral implementation detail: it interacts with
+the sleep machinery, and the right choice reverses between the static substrate and the
+consolidating system.
+
 % ---------------------------------------------------------------- 6
 \section{Discussion}
 \label{sec:discussion}
@@ -621,7 +773,8 @@ under chronic underfitting) may bear on why local sleep in vivo both impairs beh
 \paragraph{Honest limits.}
 All results are at MLP scale on MNIST/CIFAR variants with three seeds; BP+ER overtakes the local
 learner on feature-based CIFAR, bounding the regime of our headline comparison; the progress
-gate keeps a $0.7$-point static residue; and the novelty claims rest on our own literature
+gate keeps a $0.7$-point static residue under Adam and costs $2.9$ sequential points under the
+stateless optimiser (Section~\ref{sec:ablation}); and the novelty claims rest on our own literature
 search (August 2026); individual primitives --- refractory competition, sparse or null-space
 isolation, replay, adaptive scheduling --- all have ancestors, and the claimed contribution is
 their combination into concurrent, exactly isolated consolidation.
@@ -632,7 +785,8 @@ their combination into concurrent, exactly isolated consolidation.
 
 (i) Explaining why backpropagation with replay overtakes the local learner specifically on
 feature representations (dense connectivity, per-synapse adaptivity, or the learning rule
-itself); (ii) removing the residual $0.7$-point static cost of the progress-keyed gate;
+itself); (ii) reconciling the progress gate with the stateless optimiser, whose gain requires
+rotation on every batch (Section~\ref{sec:ablation});
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
 (iv) convolutional and deeper stacks; (v) a throughput theory of the isolated channel predicting
 the required replay cadence from $\rho_\ell$, code overlap and the interference rate;

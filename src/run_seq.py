@@ -151,6 +151,7 @@ CONFIGS = {
        for tag, h, a in (("w256s10", (256, 128), 0.10), ("w512s5", (512, 256), 0.05))
        for kind in ("none", "refractory")},
     "static_ctx_none_w512s5": dict(model="ctx", static=True, hidden=(512, 256), active_frac=0.05),
+    "ctx_none_w512s5": dict(model="ctx", hidden=(512, 256), active_frac=0.05),  # 12b: no-buffer baseline, table substrate
     # ---- 9C: a dentate-gyrus front-end (Cayco-Gajic & Silver 2019 checklist): fixed random
     # expansion 784 -> 2025 units, each sampling `syn` inputs (dist: a local patch; random: anywhere;
     # 784 = dense control), ReLU, k-WTA at `frac`, divisive normalisation.  The hippocampus and the
@@ -404,6 +405,21 @@ CONFIGS = {
                                      cadence=2, batch_replay=64, mask="refractory", opt="sgd", eta=0.02, hidden=(512, 256), active_frac=0.05),
     "g12_sgd_none_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random", batch_wake=16,
                                 cadence=1, batch_replay=16, mask="none", opt="sgd", eta=0.02, hidden=(512, 256), active_frac=0.05),
+    # ---- phase 12b (ablation table): the full system (SGD + rotation + progress gate); the
+    # rotation knocked out under SGD (pre-silent isolation only); the isolation knocked out on the
+    # static axis under SGD; and the exactness requirement itself (Adam whose moments advance
+    # outside the mask while the weight change stays masked).
+    **{f"{pre}g12_{name}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                       batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                       **({"static": True} if pre else {}), **kw)
+       for pre in ("", "static_")
+       for name, kw in {
+           "sgd_prog05": dict(mask="refr_prog", gamma_p=0.5, opt="sgd", eta=0.02),
+           "sgd_silent": dict(mask="silent", opt="sgd", eta=0.02),
+           "adam_leak": dict(mask="refractory", leak_moments=True),
+       }.items()},
+    "static_g12_sgd_none_w512s5": dict(model="ctx", schedule="local", static=True, buffer=1000, policy="random", batch_wake=16,
+                                       cadence=1, batch_replay=16, mask="none", opt="sgd", eta=0.02, hidden=(512, 256), active_frac=0.05),
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -931,6 +947,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     input_shape=None if front else ishape,
                     **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"]),
                            opt=cfg.get("opt", V7.get("opt", "adam"))))
+    net.leak_moments = bool(cfg.get("leak_moments"))  # 12b: Adam state advances outside the mask
     net.front = front
     if sp:
         net.regrow = sp_rho

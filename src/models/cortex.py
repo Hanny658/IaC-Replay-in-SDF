@@ -468,8 +468,15 @@ class CortexNet:
             p[l] = p[l] + eta * mh / (vh.sqrt() + self.adam_eps)
             return
         on = mask > 0
-        m[l] = torch.where(on, betas[0] * m[l] + (1 - betas[0]) * g, m[l])
-        v[l] = torch.where(on, betas[1] * v[l] + (1 - betas[1]) * g * g, v[l])
+        if getattr(self, "leak_moments", False):
+            # 12b ablation: the weight change stays confined to the mask but the optimiser state
+            # advances everywhere -- the leak that voids Proposition 1 (replay momentum re-enters
+            # awake synapses through the next unmasked waking step).
+            m[l] = betas[0] * m[l] + (1 - betas[0]) * g
+            v[l] = betas[1] * v[l] + (1 - betas[1]) * g * g
+        else:
+            m[l] = torch.where(on, betas[0] * m[l] + (1 - betas[0]) * g, m[l])
+            v[l] = torch.where(on, betas[1] * v[l] + (1 - betas[1]) * g * g, v[l])
         mh = m[l] / (1 - betas[0] ** self.t)
         vh = v[l] / (1 - betas[1] ** self.t)
         p[l] = p[l] + eta * mask * mh / (vh.sqrt() + self.adam_eps)
