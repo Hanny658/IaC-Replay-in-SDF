@@ -599,7 +599,8 @@ task overlap at the input drops $0.79\to0.18$ yet every downstream metric worsen
 points); generative (REM) replay as a substitute for episodic samples; margin-based reverse
 learning; surprise-gated memory \emph{writing}; multiplicative burst coding; absolute-threshold
 rotation gates; pruning anchored to sparse replay bursts (above); soft (gain-reduction) rotation
-and mirror-direction isolation (Section~\ref{sec:direction}).
+and mirror-direction isolation (Section~\ref{sec:direction}); an OFF-side gate refractory ---
+the flip-flop's inactive half in this system (Section~\ref{sec:ablation}).
 
 % ---------------------------------------------------------------- 5b
 \section{Ablation Study}
@@ -684,7 +685,15 @@ $0.61/0.38$) gives $91.7\pm0.4/94.0\pm0.5$, already recovering most of what the 
 loses, while $M{=}4096$ drives the static duty to $0.94$ and the refund vanishes
 ($93.4\pm0.1$). The static ceiling of silent isolation ($96.0$) stays out of reach ---
 rotation, even in bouts, keeps a residual price --- so the committed gate buys
-regime-adaptivity, not a free lunch.
+regime-adaptivity, not a free lunch. Completing the flip-flop with an OFF-side refractory
+(once a bout expires, triggers are ignored for $M_{\mathrm{off}}$ batches) is a clean null:
+short refractories ($M_{\mathrm{off}}{\le}1024$) never engage on the static stream --- a bout
+expires only after its trigger has been quiet for $M$ batches, so static re-triggering is not
+flicker to begin with --- while a long one ($M_{\mathrm{off}}{=}4096$) lowers the static duty
+to $0.53$ without moving static accuracy ($94.0\pm0.7$) and monotonically erodes the
+sequential axis ($92.1\to91.0$, occasionally masking a task switch). Together with the
+$M{=}512$ cell (duty $0.38$, static $94.0$), this locates the residual static price in the
+rotation of settled coalitions itself, not in how often the gate fires.
 
 The middle block tests the exactness requirement itself and yields the sharpest surprise of
 the table. Propositions~\ref{prop:pre}--\ref{prop:post} require Adam's moments to advance only
@@ -810,9 +819,9 @@ their combination into concurrent, exactly isolated consolidation.
 
 (i) Explaining why backpropagation with replay overtakes the local learner specifically on
 feature representations (dense connectivity, per-synapse adaptivity, or the learning rule
-itself); (ii) closing the bout-committed gate's residual static gap ($94.2$ vs.\ $96.0$ rotation-free)
---- e.g.\ an off-minimum completing the flip-flop's hysteresis, or homeostatic bout-length
-adaptation;
+itself); (ii) the origin of the bout gate's residual static price ($94.2$ vs.\ $96.0$ rotation-free),
+which the OFF-refractory null ties to the rotation of settled coalitions rather than to
+trigger frequency --- e.g.\ mastery-annealed rotation depth or utility-weighted benching;
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
 (iv) convolutional and deeper stacks; (v) a throughput theory of the isolated channel predicting
 the required replay cadence from $\rho_\ell$, code overlap and the interference rate;

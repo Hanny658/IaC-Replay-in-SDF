@@ -432,6 +432,15 @@ CONFIGS = {
                                              **({"static": True} if pre else {}))
        for pre in ("", "static_")
        for m in (512, 2048, 4096)},
+    # ---- phase 13b: full flip-flop hysteresis -- after a bout expires, the gate is refractory
+    # to triggers for `block_off` batches.  Does suppressing spurious static re-triggering
+    # (duty 0.63 at M=2048) recover the silent ceiling, and at what sequential price?
+    **{f"{pre}g13_sgd_flip{mo}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                             batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                             mask="refr_block", block=2048, block_off=mo, gamma_p=0.5, opt="sgd", eta=0.02,
+                                             **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for mo in (512, 1024, 4096)},
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -949,6 +958,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     gamma_p = cfg.get("gamma_p", 0.3)    # 11A: rotate while the error is still a gamma fraction of chance
     surprise_ema, surprise_slow, ach_on = None, None, []
     block_M, block_ctr = int(cfg.get("block", 2048)), 0  # 13: minimum on-duration (a sleep bout)
+    block_off, off_ctr = int(cfg.get("block_off", 0)), 0  # 13b: OFF refractory (full flip-flop hysteresis)
     err0_sum, err0_n = 0.0, 0           # chance-level error, measured on the first 20 batches
     S = [None] + [torch.zeros(s) for s in hidden]  # unit-level sleep pressure: use since last consolidation
     gate_log = []
@@ -1020,10 +1030,15 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     if err0_n < 20:
                         err0_sum, err0_n = err0_sum + sb, err0_n + 1
                     e0 = err0_sum / max(err0_n, 1)
-                    if err0_n < 20 or surprise_ema >= gamma_p * e0 or surprise_ema >= beta_nov * surprise_slow:
+                    trig = err0_n < 20 or surprise_ema >= gamma_p * e0 or surprise_ema >= beta_nov * surprise_slow
+                    if off_ctr > 0:      # 13b: OFF side of the flip-flop -- refractory to triggers
+                        off_ctr -= 1
+                    elif trig:
                         block_ctr = block_M  # re-arm the episode
                     if block_ctr > 0:
                         block_ctr -= 1
+                        if block_ctr == 0 and block_off:
+                            off_ctr = block_off  # the bout just ended: enter the OFF refractory
                         net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
                         ach_on.append(1.0)
                     else:

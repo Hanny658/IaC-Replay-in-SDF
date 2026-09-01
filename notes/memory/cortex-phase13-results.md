@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: b260108a-3c8a-4668-bb0c-63a09e66c838
-  modified: 2026-09-01T14:02:51.802Z
+  modified: 2026-09-01T14:41:17.036Z
 ---
 
 Ran 2026-09-01 evening, immediately after the 12b/12c ablation found the per-batch prog gate
@@ -30,8 +30,17 @@ bouts keeps a residual price -- the gate buys regime-adaptivity, not a free lunc
 **Why:** answers the 12b open question ("can any gate make a third operating point under SGD?")
 positively, with a mechanism that is MORE biological (bout structure), not less -- and revises
 12b's "no third point" to "no third point *per batch*".
-**How to apply:** sequential default = refr_block M=2048 + SGD (92.1/94.2); pure static best =
-SGD+silent (96.0).  Manuscript updated (Table 1 row, reading passage, abstract, Saper 2005).
-Open: off-minimum (full flip-flop hysteresis), homeostatic bout-length adaptation, bout gate on
+13b OFF-side refractory (`block_off`; triggers ignored for M_off batches after a bout expires)
+= CLEAN NULL: M_off<=1024 never engages on static (bit-identical trajectories -- a bout expires
+only after its trigger has been quiet >=2048 batches, so static re-triggering is not flicker);
+M_off=4096 lowers static duty 0.63->0.53 with NO static gain (94.0 +-0.7) and monotone seq
+erosion (92.1->91.9->91.7->91.0 at OFF 0/512/1024/4096; long OFF can mask a task switch, seed1
+89.8).  With the M=512 cell (duty 0.38 -> 94.0), the residual static price is located in the
+rotation of settled coalitions ITSELF, not in trigger frequency -- the flip-flop's functional
+half here is the ON side.
+**How to apply:** sequential default = refr_block M=2048 + SGD (92.1/94.2), NO off-refractory;
+pure static best = SGD+silent (96.0).  Manuscript updated (Table 1 row, reading passage +
+OFF-null append, abstract, negative results, Saper 2005).  Open: mastery-annealed rotation
+depth or utility-weighted benching (attack the settled-coalition price directly), bout gate on
 CIFAR/feature regimes.  Related: [[cortex-phase12-results]], [[cortex-phase11-results]],
 [[cortex-phase10-results]].
