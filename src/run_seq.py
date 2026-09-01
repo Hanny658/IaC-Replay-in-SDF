@@ -441,6 +441,81 @@ CONFIGS = {
                                              **({"static": True} if pre else {}))
        for pre in ("", "static_")
        for mo in (512, 1024, 4096)},
+    # ---- phase 14: eta sensitivity.  (1) is the stateless win a plateau or a knife-edge,
+    # (2) is masked Adam being compared at its own best lr, (3) is unmasked SGD's instability
+    # an eta artefact or the absence of isolation, (4) does the bout-gate headline inherit
+    # the plateau?
+    **{f"{pre}g14_sgd_refr_e{tag}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                                batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                                mask="refractory", opt="sgd", eta=e, **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for tag, e in (("005", 0.005), ("01", 0.01), ("05", 0.05), ("1", 0.1))},
+    **{f"{pre}g14_adam_refr_e{tag}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                                 batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                                 mask="refractory", eta=e, **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for tag, e in (("3e4", 3e-4), ("3e3", 3e-3))},
+    **{f"g14_sgd_none_e{tag}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                           batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                           mask="none", opt="sgd", eta=e)
+       for tag, e in (("005", 0.005), ("05", 0.05))},
+    **{f"{pre}g14_sgd_block2048_e{tag}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                                     batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                                     mask="refr_block", block=2048, gamma_p=0.5, opt="sgd", eta=e,
+                                                     **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for tag, e in (("01", 0.01), ("05", 0.05))},
+    # ---- phase 15A: does the stateless optimiser transfer to the CIFAR regimes (and does it
+    # move the regime boundary against BP+ER on features)?
+    **{f"{ds}_sgd_refr_e{tag}{sfx}": dict(model="ctx", dataset=d, buffer=1000, policy="random",
+                                          schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                          mask="refractory", opt="sgd", eta=e, hidden=(512, 256), active_frac=0.05,
+                                          **({"static": True} if sfx else {}))
+       for ds, d in (("cif", "cifar"), ("cfeat", "cifarf"))
+       for sfx in ("", "_static")
+       for tag, e in (("01", 0.01), ("02", 0.02), ("05", 0.05))},
+    # ---- phase 15B: two-timescale synapses (fast weight anchored to a slow consolidation
+    # trace).  Does settled function living in the anchor dissolve rotation's static price?
+    **{f"{pre}g15_sgd_anchor_l{lt}m{mt}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                                      batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                                      active_frac=0.05, mask="refractory", opt="sgd", eta=0.02,
+                                                      anchor=(lam, mu), **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for lt, lam in (("1e3", 1e-3), ("3e3", 3e-3))
+       for mt, mu in (("1e4", 1e-4), ("3e4", 3e-4))},
+    # 15B follow-up: both axes improved monotonically toward weaker coupling -- probe the
+    # weak-coupling corner (sweet spot vs collapse back to the no-anchor baseline)
+    **{f"{pre}g15_sgd_anchor_{tag}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                                 batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                                 active_frac=0.05, mask="refractory", opt="sgd", eta=0.02,
+                                                 anchor=am, **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for tag, am in (("l3e4m1e4", (3e-4, 1e-4)), ("l3e4m3e4", (3e-4, 3e-4)), ("l1e3m1e3", (1e-3, 1e-3)))},
+    # 15B final: weak anchor x bout gate -- the anchor lifts the sequential ceiling (92.4), the
+    # bout gate refunds the static price (94.2); does the combination dominate both?
+    **{f"{pre}g15_sgd_anchorblock_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                                batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                                active_frac=0.05, mask="refr_block", block=2048, gamma_p=0.5,
+                                                opt="sgd", eta=0.02, anchor=(3e-4, 3e-4),
+                                                **({"static": True} if pre else {}))
+       for pre in ("", "static_")},
+    # ---- phase 15C: utility-exempt rotation (top-q long-use units never benched)
+    **{f"{pre}g15_sgd_util{qt}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                             batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                             active_frac=0.05, mask="refr_util", util_q=q, opt="sgd", eta=0.02,
+                                             **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for qt, q in (("10", 0.10), ("25", 0.25))},
+    # ---- phase 15D: fairness controls for the feature-regime result -- BP+ER at other lrs
+    # (is 42.6 also an under-tuned default?), and the SGD eta edge on features
+    "cfeat_bp_er_lr3e4": dict(model="bp", dataset="cifarf", buffer=1000, policy="random", replay="er", bp_lr=3e-4),
+    "cfeat_bp_er_lr3e3": dict(model="bp", dataset="cifarf", buffer=1000, policy="random", replay="er", bp_lr=3e-3),
+    "cfeat_sgd_refr_e005": dict(model="ctx", dataset="cifarf", buffer=1000, policy="random", schedule="local",
+                                batch_wake=16, cadence=1, batch_replay=16, mask="refractory", opt="sgd", eta=0.005,
+                                hidden=(512, 256), active_frac=0.05),
+    "cfeat_sgd_refr_e005_static": dict(model="ctx", dataset="cifarf", buffer=1000, policy="random", schedule="local",
+                                       batch_wake=16, cadence=1, batch_replay=16, mask="refractory", opt="sgd", eta=0.005,
+                                       hidden=(512, 256), active_frac=0.05, static=True),
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -656,12 +731,12 @@ class Buffer:
 
 
 # ------------------------------------------------------------------ models
-def make_bp(seed, hidden, n_in=784):
+def make_bp(seed, hidden, n_in=784, lr=1e-3):
     torch.manual_seed(seed)
     net = torch.nn.Sequential(torch.nn.Linear(n_in, hidden[0]), torch.nn.ReLU(),
                               torch.nn.Linear(hidden[0], hidden[1]), torch.nn.ReLU(),
                               torch.nn.Linear(hidden[1], 10))
-    return net, torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=1e-3)
+    return net, torch.optim.Adam(net.parameters(), lr=lr, weight_decay=1e-3)
 
 
 def bp_step(net, opt, Xb, Yb):
@@ -703,7 +778,7 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
     hidden = RM.WIDE
     hidden = tuple(cfg.get("hidden", RM.WIDE))
     if model == "bp":
-        net, opt = make_bp(seed, hidden, Xtr.shape[1])
+        net, opt = make_bp(seed, hidden, Xtr.shape[1], lr=cfg.get("bp_lr", 1e-3))
     else:
         front = make_front(cfg, seed)
         net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, 10], seed=seed, input_shape=None if front else ishape,
@@ -955,6 +1030,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     eta0 = cfg.get("eta", 1e-3)  # 12: SGD needs its own scale
     mirror_syn, mirror_bias = None, None  # 12-E1: waking masked away from the last replay's support
     beta_nov = cfg.get("beta_nov", 1.3)  # 10A3: novelty = fast error EMA above its own slow baseline
+    util_q = cfg.get("util_q", 0.25)     # 15C: top-q long-use units are exempt from rotation
     gamma_p = cfg.get("gamma_p", 0.3)    # 11A: rotate while the error is still a gamma fraction of chance
     surprise_ema, surprise_slow, ach_on = None, None, []
     block_M, block_ctr = int(cfg.get("block", 2048)), 0  # 13: minimum on-duration (a sleep bout)
@@ -971,6 +1047,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"]),
                            opt=cfg.get("opt", V7.get("opt", "adam"))))
     net.leak_moments = bool(cfg.get("leak_moments"))  # 12b: Adam state advances outside the mask
+    net.anchor = cfg.get("anchor")  # 15B: (lam, mu) two-timescale synapses, None = off
     net.front = front
     if sp:
         net.regrow = sp_rho
@@ -1044,6 +1121,18 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     else:
                         net.suppress = None
                         ach_on.append(0.0)
+                elif mask_policy == "refr_util":
+                    # 15C: utility-exempt rotation.  Fired units sit out the next competition
+                    # UNLESS they are long-term high-utility (top q of the long-use trace): the
+                    # settled coalitions, which the 13b null blamed for the residual static
+                    # price, stay awake; everyone else rotates as usual.
+                    sup = [None]
+                    for l in range(1, net.L):
+                        fired = (a[l] > 0).float().mean(0).gt(0).float()
+                        k = max(1, int(round(util_q * long_use[l].numel())))
+                        thr = torch.topk(long_use[l], k).values.min()
+                        sup.append(fired * (long_use[l] < thr).float())
+                    net.suppress = sup
                 elif mask_policy == "refr_nov":
                     # 10A3: the absolute threshold cannot compare across data sets (the static
                     # stream's converged error sits above any theta the sequential stream dips
@@ -1105,7 +1194,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     S[l] = S[l] + fired                             # Process S: rises with use
                     use[l] = 0.9 * use[l] + 0.1 * fired            # recent use, ~10 batches
                     long_use[l] = 0.995 * long_use[l] + 0.005 * fired  # long-term use, ~200 batches
-                    if mask_policy in ("silent", "refractory", "refr_soft", "refr_press", "refr_frac", "refr_ach", "refr_nov", "refr_prog", "refr_block"):
+                    if mask_policy in ("silent", "refractory", "refr_soft", "refr_press", "refr_frac", "refr_ach", "refr_nov", "refr_prog", "refr_block", "refr_util"):
                         awake.append((fired > 0).float())
                     elif mask_policy == "idle":
                         awake.append((use[l] >= use[l].median()).float())   # asleep = idle half

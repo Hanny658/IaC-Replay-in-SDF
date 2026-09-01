@@ -519,6 +519,24 @@ class CortexNet:
                 shrink = self.kp_decay if sm is None else self.kp_decay * sm
                 self.W[l] = self.W[l] - shrink * self.W[l]
                 self.B[l - 1] = self.B[l - 1] - shrink * self.B[l - 1]
+        anc = getattr(self, "anchor", None)
+        if anc and sign > 0 and not replay:
+            # 15B: two-timescale synapses (Benna-Fusi 2016, minimal form).  Each synapse carries a
+            # slow anchor: the anchor absorbs the fast weight at rate mu, the fast weight decays
+            # toward the anchor at rate lam.  Ticks only on WAKING updates, so the replay path's
+            # exact-isolation guarantee is untouched; replay-written changes are absorbed by the
+            # following waking ticks.  Settled function lives in the anchor -- a rotation-induced
+            # perturbation that is not sustained by errors relaxes back instead of accumulating.
+            lam, mu = anc
+            if getattr(self, "W_slow", None) is None:
+                self.W_slow = [w.clone() if isinstance(w, torch.Tensor) else None for w in self.W]
+                self.b_slow = [w.clone() if isinstance(w, torch.Tensor) else None for w in self.b]
+                self.B_slow = [w.clone() if isinstance(w, torch.Tensor) else None for w in self.B]
+            for P, S in ((self.W, self.W_slow), (self.b, self.b_slow), (self.B, self.B_slow)):
+                for l in range(len(P)):
+                    if isinstance(P[l], torch.Tensor):
+                        S[l] += mu * (P[l] - S[l])
+                        P[l] += lam * (S[l] - P[l])
         if self.dale:
             self._project_dale()
         self._apply_mask()
