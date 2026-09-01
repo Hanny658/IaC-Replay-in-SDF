@@ -58,7 +58,9 @@ identical machinery; masked
 replay is insensitive to replay batch size down to eight samples, whereas unmasked replay and
 offline nights degrade sharply at the same sizes. The i.i.d.\ cost of rotation ($1.3$--$3.0$
 points) is eliminated, under masked Adam, by the relative-novelty gate on learnable streams ($95.0\%$ vs.\ $95.0\%$
-without rotation) and reverses into a $+2.5$ to $+6.5$ point \emph{gain} on harder data
+without rotation); under a stateless optimiser the same gate must instead be committed to
+sleep-bout-like episodes with a minimum on-duration, which then weakly dominate always-on
+rotation ($92.1/94.2$ vs.\ $92.0/93.4$). The price reverses into a $+2.5$ to $+6.5$ point \emph{gain} on harder data
 (split CIFAR-10), where the full ordering of methods transfers. We further show that
 surprise-triggered waking replay fails at any volume, that the trigger must be homeostatic, and
 that the residual advantage of offline nights is confined to very small episodic buffers on
@@ -523,8 +525,8 @@ never becomes predictable, so rotation shuts off exactly where it helps). The pr
 $27.2\pm0.7$ and static $25.3\pm1.0$ (both $=$ always-on rotation), split-MNIST $90.4\pm0.9$,
 i.i.d.\ MNIST $94.3\pm0.2$ at $\gamma{=}0.5$ --- retaining a residual $0.7$-point static cost
 relative to the pure novelty gate on easy streams, the price of the unmastered clause. (All
-gate numbers in this subsection use masked Adam; the gate's adverse interaction with the
-stateless optimiser is dissected in Section~\ref{sec:ablation}.)
+gate numbers in this subsection use masked Adam; under the stateless optimiser the gate must be
+committed to minimum-duration bouts --- Section~\ref{sec:ablation}.)
 
 \begin{figure}[t]
 \centering
@@ -625,8 +627,9 @@ combination not applicable. Bold: column best.}
 Variant & Sequential & i.i.d.\ (static) \\
 \midrule
 \multicolumn{3}{@{}l}{\emph{Full system and single knockouts (stateless SGD, $\eta=0.02$)}}\\
-full: exact isolation $+$ rotation $+$ progress gate & $89.1\pm0.3$ & $95.0\pm0.6$ \\
-$-$ gate (rotation always on) & $\mathbf{92.0\pm0.7}$ & $93.4\pm0.2$ \\
+full: exact isolation $+$ rotation $+$ per-batch progress gate & $89.1\pm0.3$ & $95.0\pm0.6$ \\
+\quad the same gate committed to bouts (min on-duration $2048$) & $\mathbf{92.1\pm0.6}$ & $94.2\pm0.4$ \\
+$-$ gate (rotation always on) & $92.0\pm0.7$ & $93.4\pm0.2$ \\
 $-$ rotation (pre-silent isolation only) & $89.0\pm0.5$ & $\mathbf{96.0\pm0.1}$ \\
 $-$ isolation (unmasked interleaved replay) & $84.1\pm4.1$ & $95.7\pm0.1$ \\
 $-$ replay (no episodic buffer; Adam) & $19.5\pm0.0$ & $95.1\pm0.1$ \\
@@ -656,20 +659,32 @@ $89.0$ for the pre-silent channel alone), isolation $+7.9$ with a six-fold varia
 floor). The static column identifies who pays: rotation is the only statically costly
 component ($93.4$ always-on against $96.0$ for isolation without rotation --- the highest
 static cell in the table, above even the no-buffer baseline), and the progress gate refunds
-the price in full ($95.0$, at the $95.1$ ceiling). The honest headline of the table, however,
-is that the full conjunction is the best system \emph{nowhere}: against always-on rotation it
-loses $2.9$ sequential points ($89.1$ vs.\ $92.0$), and against the rotation-free system it is
-sequentially identical ($89.1$ vs.\ $89.0$) yet a full static point worse ($95.0\pm0.6$ vs.\
-$96.0\pm0.1$). Under SGD the gated point is weakly dominated: the system has exactly two useful
-operating points --- always-on rotation ($92.0/93.4$) for sequential streams, plain silent
-isolation ($89.0/96.0$) for stationary ones --- and the gate manufactures no third. The
-mechanism is the half-cadence effect again: the stateless gain requires rotation on
-\emph{every} batch, and within each task the gate closes as soon as the task is mastered ---
-precisely the batches on which continuous rotation earns its $+3.0$. Under Adam the same gate
-is genuinely adaptive: it captures most of rotation's sequential value ($90.4$ gated vs.\
-$87.8$ silent) at a modest static cost ($94.3$ vs.\ $95.0\pm0.3$ for silent
-isolation), an undominated compromise. The gate's value is thus a property of the optimiser it wraps,
-not of the gate alone.
+the price in full ($95.0$, at the $95.1$ ceiling). The \emph{per-batch} gated conjunction,
+however, is the best system nowhere: against always-on rotation it loses $2.9$ sequential
+points ($89.1$ vs.\ $92.0$), and against the rotation-free system it is sequentially identical
+($89.1$ vs.\ $89.0$) yet a full static point worse ($95.0\pm0.6$ vs.\ $96.0\pm0.1$) --- it
+manufactures no operating point that always-on rotation and plain silent isolation do not
+already offer. Under Adam the same per-batch gate \emph{is} genuinely adaptive ($90.4$ gated
+vs.\ $87.8$ silent sequentially, at a modest static cost, $94.3$ vs.\ $95.0\pm0.3$), so the
+failure is specific to the stateless optimiser, whose rotation gain the gate's flicker
+destroys: the trigger is open on only $12\%$ of batches, and within each task it closes the
+moment the task is mastered --- precisely the batches on which continuous rotation earns its
+$+3.0$.
+
+Committing the gate to \emph{episodes} repairs it. In the bout-committed variant, every firing
+of the same trigger re-arms a rotation episode with a minimum on-duration of $M$ waking batches
+--- the consolidated-bout structure of the sleep--wake flip-flop switch \citep{saper2005}, in
+which state flicker is the pathology, not the mechanism. The sparse trigger is thereby
+converted into long contiguous episodes whose coverage is regime-asymmetric: at $M{=}2048$,
+bouts chain into near-permanent rotation on the sequential stream ($94\%$ of batches) yet cover
+only $63\%$ of the static one. The result, $\mathbf{92.1\pm0.6}$ sequential at $94.2\pm0.4$
+static, restores the sequential ceiling and refunds $0.8$ of the static price at once, weakly
+dominating always-on rotation ($92.0/93.4$). Bout length is a proper knob: $M{=}512$ (duties
+$0.61/0.38$) gives $91.7\pm0.4/94.0\pm0.5$, already recovering most of what the per-batch gate
+loses, while $M{=}4096$ drives the static duty to $0.94$ and the refund vanishes
+($93.4\pm0.1$). The static ceiling of silent isolation ($96.0$) stays out of reach ---
+rotation, even in bouts, keeps a residual price --- so the committed gate buys
+regime-adaptivity, not a free lunch.
 
 The middle block tests the exactness requirement itself and yields the sharpest surprise of
 the table. Propositions~\ref{prop:pre}--\ref{prop:post} require Adam's moments to advance only
@@ -782,8 +797,9 @@ under chronic underfitting) may bear on why local sleep in vivo both impairs beh
 \paragraph{Honest limits.}
 All results are at MLP scale on MNIST/CIFAR variants with three seeds; BP+ER overtakes the local
 learner on feature-based CIFAR, bounding the regime of our headline comparison; the progress
-gate keeps a $0.7$-point static residue under Adam and is weakly dominated by rotation-free
-isolation under the stateless optimiser (Section~\ref{sec:ablation}); and the novelty claims rest on our own literature
+gate keeps a $0.7$-point static residue under Adam, must be committed to minimum-duration
+bouts under the stateless optimiser, and even then leaves a $1.8$-point static gap to
+rotation-free isolation (Section~\ref{sec:ablation}); and the novelty claims rest on our own literature
 search (August 2026); individual primitives --- refractory competition, sparse or null-space
 isolation, replay, adaptive scheduling --- all have ancestors, and the claimed contribution is
 their combination into concurrent, exactly isolated consolidation.
@@ -794,9 +810,9 @@ their combination into concurrent, exactly isolated consolidation.
 
 (i) Explaining why backpropagation with replay overtakes the local learner specifically on
 feature representations (dense connectivity, per-synapse adaptivity, or the learning rule
-itself); (ii) a rotation gate compatible with the stateless optimiser --- since the SGD gain requires
-rotation on every batch, a useful gate needs block-wise switching with a minimum on-duration
-(Section~\ref{sec:ablation});
+itself); (ii) closing the bout-committed gate's residual static gap ($94.2$ vs.\ $96.0$ rotation-free)
+--- e.g.\ an off-minimum completing the flip-flop's hysteresis, or homeostatic bout-length
+adaptation;
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
 (iv) convolutional and deeper stacks; (v) a throughput theory of the isolated channel predicting
 the required replay cadence from $\rho_\ell$, code overlap and the interference rate;
@@ -878,6 +894,8 @@ which sharpens, rather than blurs, the division of labour between wake and sleep
 \bibitem[Ross et al.(2012)]{ross2012} Ross, G.J., Adams, N.M., Tasoulis, D.K., Hand, D.J. (2012). Exponentially weighted moving average charts for detecting concept drift. \emph{Pattern Recognition Letters} 33, 191--198.
 
 \bibitem[Saha et al.(2021)]{saha2021} Saha, G., Garg, I., Roy, K. (2021). Gradient projection memory for continual learning. \emph{ICLR}.
+
+\bibitem[Saper et al.(2005)]{saper2005} Saper, C.B., Scammell, T.E., Lu, J. (2005). Hypothalamic regulation of sleep and circadian rhythms. \emph{Nature} 437, 1257--1263.
 
 \bibitem[Shen et al.(2021)]{shen2021} Shen, Y., Dasgupta, S., Navlakha, S. (2021). Algorithmic insights on continual learning from fruit flies. \emph{arXiv:2107.07617}.
 

@@ -423,6 +423,15 @@ CONFIGS = {
        }.items()},
     "static_g12_sgd_none_w512s5": dict(model="ctx", schedule="local", static=True, buffer=1000, policy="random", batch_wake=16,
                                        cadence=1, batch_replay=16, mask="none", opt="sgd", eta=0.02, hidden=(512, 256), active_frac=0.05),
+    # ---- phase 13: block-wise minimum-on-duration gate (sleep bouts) under the stateless
+    # optimiser -- can episode commitment manufacture the third operating point the per-batch
+    # gate could not?  `block` = bout length in waking batches; one task = 3750 batches.
+    **{f"{pre}g13_sgd_block{m}_w512s5": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                             batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.05,
+                                             mask="refr_block", block=m, gamma_p=0.5, opt="sgd", eta=0.02,
+                                             **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for m in (512, 2048, 4096)},
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -939,6 +948,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     beta_nov = cfg.get("beta_nov", 1.3)  # 10A3: novelty = fast error EMA above its own slow baseline
     gamma_p = cfg.get("gamma_p", 0.3)    # 11A: rotate while the error is still a gamma fraction of chance
     surprise_ema, surprise_slow, ach_on = None, None, []
+    block_M, block_ctr = int(cfg.get("block", 2048)), 0  # 13: minimum on-duration (a sleep bout)
     err0_sum, err0_n = 0.0, 0           # chance-level error, measured on the first 20 batches
     S = [None] + [torch.zeros(s) for s in hidden]  # unit-level sleep pressure: use since last consolidation
     gate_log = []
@@ -992,6 +1002,28 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                         err0_sum, err0_n = err0_sum + sb, err0_n + 1
                     e0 = err0_sum / max(err0_n, 1)
                     if err0_n < 20 or surprise_ema >= gamma_p * e0 or surprise_ema >= beta_nov * surprise_slow:
+                        net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
+                        ach_on.append(1.0)
+                    else:
+                        net.suppress = None
+                        ach_on.append(0.0)
+                elif mask_policy == "refr_block":
+                    # 13: the progress trigger of 11A, but the state it flips has inertia: every
+                    # firing re-arms a rotation episode of at least `block` batches (Saper's
+                    # sleep-wake flip-flop: consolidated bouts, not per-stimulus flicker --
+                    # flickering states are the pathology, not the mechanism).  An unmastered
+                    # stream re-triggers inside the bout and stays in one long episode; a mastered
+                    # static stream pays only the trailing edge of its opening bout.
+                    sb = float((eps[net.L] ** 2).sum(1).mean())
+                    surprise_ema = sb if surprise_ema is None else 0.9 * surprise_ema + 0.1 * sb
+                    surprise_slow = sb if surprise_slow is None else 0.998 * surprise_slow + 0.002 * sb
+                    if err0_n < 20:
+                        err0_sum, err0_n = err0_sum + sb, err0_n + 1
+                    e0 = err0_sum / max(err0_n, 1)
+                    if err0_n < 20 or surprise_ema >= gamma_p * e0 or surprise_ema >= beta_nov * surprise_slow:
+                        block_ctr = block_M  # re-arm the episode
+                    if block_ctr > 0:
+                        block_ctr -= 1
                         net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
                         ach_on.append(1.0)
                     else:
@@ -1058,7 +1090,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     S[l] = S[l] + fired                             # Process S: rises with use
                     use[l] = 0.9 * use[l] + 0.1 * fired            # recent use, ~10 batches
                     long_use[l] = 0.995 * long_use[l] + 0.005 * fired  # long-term use, ~200 batches
-                    if mask_policy in ("silent", "refractory", "refr_soft", "refr_press", "refr_frac", "refr_ach", "refr_nov", "refr_prog"):
+                    if mask_policy in ("silent", "refractory", "refr_soft", "refr_press", "refr_frac", "refr_ach", "refr_nov", "refr_prog", "refr_block"):
                         awake.append((fired > 0).float())
                     elif mask_policy == "idle":
                         awake.append((use[l] >= use[l].median()).float())   # asleep = idle half
