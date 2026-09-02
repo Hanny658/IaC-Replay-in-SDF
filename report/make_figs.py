@@ -121,3 +121,42 @@ ax.set_title("K = 200: what the night still buys", fontsize=8)
 fig.savefig(os.path.join(FIGS, "fig_k200.pdf")); plt.close(fig)
 
 print("figures written to", FIGS)
+
+
+# ---------------- Fig: the operating frontier (phases 12-15, stateless optimiser) ----------------
+def stat6(cfg):
+    accs = []
+    for s in range(6):
+        p = os.path.join(PARTS, f"{cfg}_s{s}.pkl")
+        if os.path.exists(p):
+            accs.append(pickle.load(open(p, "rb"))["final_acc"])
+    return 100 * np.mean(accs), 100 * (np.std(accs, ddof=1) if len(accs) > 1 else 0.0)
+
+
+FRONTIER = [  # label, seq cfg, static cfg, non-dominated, annotation offset
+    ("silent", "g12_sgd_silent_w512s5", "static_g12_sgd_silent_w512s5", True, (5, -2)),
+    ("util $q{=}.25$", "g15_sgd_util25_w512s5", "static_g15_sgd_util25_w512s5", True, (5, -2)),
+    ("per-batch gate", "g12_sgd_prog05_w512s5", "static_g12_sgd_prog05_w512s5", False, (5, -9)),
+    ("util $q{=}.10$", "g15_sgd_util10_w512s5", "static_g15_sgd_util10_w512s5", False, (-14, -11)),
+    ("masked Adam", "g9a_w512s5_br16", "static_loc16_refractory_br16_w512s5", False, (5, -2)),
+    ("bout gate", "g13_sgd_block2048_w512s5", "static_g13_sgd_block2048_w512s5", True, (-24, 6)),
+    ("anchor$+$bout", "g15_sgd_anchorblock_w512s5", "static_g15_sgd_anchorblock_w512s5", True, (-56, -2)),
+    ("always-on", "g12_sgd_refr_w512s5", "static_g12_sgd_refr_w512s5", False, (-40, -11)),
+    ("$+$anchor", "g15_sgd_anchor_l3e4m3e4_w512s5", "static_g15_sgd_anchor_l3e4m3e4_w512s5", True, (6, -3)),
+]
+fig, ax = plt.subplots(figsize=(3.8, 2.9))
+front = []
+for name, cs, ct, onf, off in FRONTIER:
+    (xm, xs), (ym, ys) = stat6(cs), stat6(ct)
+    ax.errorbar(xm, ym, xerr=xs, yerr=ys, marker="o", ms=4,
+                color=C["refr"] if onf else C["grey"], lw=0, elinewidth=0.8, capsize=1.5)
+    ax.annotate(name, (xm, ym), textcoords="offset points", xytext=off, fontsize=7,
+                color=C["refr"] if onf else C["grey"])
+    if onf:
+        front.append((xm, ym))
+front.sort()
+ax.plot([p[0] for p in front], [p[1] for p in front], color=C["refr"], lw=0.8, alpha=0.45, zorder=0)
+ax.set_xlabel("sequential (split-MNIST) accuracy (%)")
+ax.set_ylabel("i.i.d. (static) accuracy (%)")
+fig.savefig(os.path.join(FIGS, "fig_frontier.pdf")); plt.close(fig)
+print("frontier written")
