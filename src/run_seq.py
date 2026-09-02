@@ -646,49 +646,28 @@ CONFIGS = {
        }.items()},
     # ---- phase 18: split CIFAR-100 (10 tasks x 10 classes) on the 10% record substrate --
     # does the mechanism survive 2x the task switches and a per-class buffer collapse?
-    **{f"c100_{name}": dict(model="ctx", dataset="cifar100", buffer=1000, policy="random",
-                            hidden=(512, 256), active_frac=0.10, **kw)
+    **{f"c100{ftag}_{name}": dict(model="ctx", dataset=ds, buffer=K, policy="random",
+                                  hidden=(512, 256), active_frac=0.10, kp_decay=1e-4, tgt_scale=3.0, **kw)
+       for ftag, ds in (("", "cifar100"), ("f", "cifar100f"))
+       for K, ktag in ((1000, ""), (5000, "_k5000"))
        for name, kw in {
-           "sgd_refr": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                            mask="refractory", opt="sgd", eta=0.01),
-           "sgd_none": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                            mask="none", opt="sgd", eta=0.01),
-           "sgd_block2048": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                                 mask="refr_block", block=2048, gamma_p=0.5, opt="sgd", eta=0.01),
-           "night": dict(replay="nrem"),
-           "ctx_none": dict(),
-           "sgd_refr_static": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                                   mask="refractory", opt="sgd", eta=0.01, static=True),
-           "sgd_none_static": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                                   mask="none", opt="sgd", eta=0.01, static=True),
+           f"sgd_refr{ktag}": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                   mask="refractory", opt="sgd", eta=0.02),
+           f"sgd_none{ktag}": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                   mask="none", opt="sgd", eta=0.02),
+           f"night{ktag}": dict(replay="nrem"),
        }.items()},
-    "c100_bp_er_1000": dict(model="bp", dataset="cifar100", buffer=1000, policy="random", replay="er", bp_lr=3e-4),
-    "c100_bp_none": dict(model="bp", dataset="cifar100", bp_lr=3e-4),
-    **{f"c100f_{name}": dict(model="ctx", dataset="cifar100f", buffer=1000, policy="random",
-                             hidden=(512, 256), active_frac=0.10, **kw)
-       for name, kw in {
-           "sgd_refr": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                            mask="refractory", opt="sgd", eta=0.01),
-           "sgd_none": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                            mask="none", opt="sgd", eta=0.01),
-           "sgd_block2048": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                                 mask="refr_block", block=2048, gamma_p=0.5, opt="sgd", eta=0.01),
-           "night": dict(replay="nrem"),
-           "ctx_none": dict(),
-           "sgd_refr_static": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                                   mask="refractory", opt="sgd", eta=0.01, static=True),
-       }.items()},
-    "c100f_bp_er_1000": dict(model="bp", dataset="cifar100f", buffer=1000, policy="random", replay="er", bp_lr=3e-4),
-    # per-class-matched buffer (K=5000 = 50/class)
-    **{f"c100{ftag}_sgd_refr_k5000": dict(model="ctx", dataset=ds, buffer=5000, policy="random",
-                                          schedule="local", batch_wake=16, cadence=1, batch_replay=16,
-                                          mask="refractory", opt="sgd", eta=0.01, hidden=(512, 256), active_frac=0.10)
+    **{f"c100{ftag}_ctx_none": dict(model="ctx", dataset=ds, kp_decay=1e-4, tgt_scale=3.0,
+                                    hidden=(512, 256), active_frac=0.10)
        for ftag, ds in (("", "cifar100"), ("f", "cifar100f"))},
-    **{f"c100{ftag}_night_k5000": dict(model="ctx", dataset=ds, buffer=5000, policy="random",
-                                       replay="nrem", hidden=(512, 256), active_frac=0.10)
+    **{f"c100{ftag}_sgd_refr_static": dict(model="ctx", dataset=ds, buffer=1000, policy="random",
+                                           schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                           mask="refractory", opt="sgd", eta=0.02, static=True,
+                                           kp_decay=1e-4, tgt_scale=3.0, hidden=(512, 256), active_frac=0.10)
        for ftag, ds in (("", "cifar100"), ("f", "cifar100f"))},
-    **{f"c100{ftag}_bp_er_5000": dict(model="bp", dataset=ds, buffer=5000, policy="random", replay="er", bp_lr=3e-4)
-       for ftag, ds in (("", "cifar100"), ("f", "cifar100f"))},
+    **{f"c100{ftag}_bp_er{ktag}": dict(model="bp", dataset=ds, buffer=K, policy="random", replay="er", bp_lr=3e-4)
+       for ftag, ds in (("", "cifar100"), ("f", "cifar100f"))
+       for K, ktag in ((1000, "_1000"), (5000, "_5000"))},
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -1076,11 +1055,13 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
         front = make_front(cfg, seed)
         net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, NC], seed=seed, input_shape=None if front else ishape,
                         decoder=decoder, rem_neg=rem_neg, **dict(V7, active_frac=cfg.get("active_frac", V7["active_frac"]),
-                                                                 conn_density=cfg.get("conn_density", V7["conn_density"])))
+                                                                 conn_density=cfg.get("conn_density", V7["conn_density"]),
+                                                                 kp_decay=cfg.get("kp_decay", V7["kp_decay"])))
         net.front = front
     buf = Buffer(K, policy, g)
     tasks = [tuple(range(NC))] if static else split_tasks(cfg)
-    onehot = lambda y: torch.nn.functional.one_hot(torch.as_tensor(y), NC).float()
+    _ts = cfg.get("tgt_scale", 1.0) if cfg.get("model") != "bp" else 1.0
+    onehot = lambda y: _ts * torch.nn.functional.one_hot(torch.as_tensor(y), NC).float()
     acc_matrix = np.full((len(tasks), len(tasks)), np.nan)
     t0 = time.time()
     for ti, classes in enumerate(tasks):
@@ -1339,7 +1320,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, NC], seed=seed,
                     input_shape=None if front else ishape,
                     **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"]),
-                           opt=cfg.get("opt", V7.get("opt", "adam"))))
+                           opt=cfg.get("opt", V7.get("opt", "adam")),
+                           kp_decay=cfg.get("kp_decay", V7["kp_decay"])))
     net.leak_moments = bool(cfg.get("leak_moments"))  # 12b: Adam state advances outside the mask
     net.anchor = cfg.get("anchor")  # 15B: (lam, mu) two-timescale synapses, None = off
     net.front = front
@@ -1347,7 +1329,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
         net.regrow = sp_rho
     buf = Buffer(K, policy, g)
     tasks = [tuple(range(NC))] if static else split_tasks(cfg)
-    onehot = lambda y: torch.nn.functional.one_hot(torch.as_tensor(y), NC).float()
+    _ts = cfg.get("tgt_scale", 1.0) if cfg.get("model") != "bp" else 1.0
+    onehot = lambda y: _ts * torch.nn.functional.one_hot(torch.as_tensor(y), NC).float()
     use = [None] + [torch.full((s,), 0.5) for s in hidden]       # recent-use trace per hidden unit
     long_use = [None] + [torch.full((s,), 0.5) for s in hidden]  # long-term use trace
     acc_matrix = np.full((len(tasks), len(tasks)), np.nan)
