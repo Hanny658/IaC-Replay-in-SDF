@@ -56,20 +56,14 @@ cost of $\approx\!1.2\times$ the night's; reversing the protected direction (gua
 memories while learning the present, as in null-space methods) collapses to $81.3\pm2.9\%$ under
 identical machinery; masked
 replay is insensitive to replay batch size down to eight samples, whereas unmasked replay and
-offline nights degrade sharply at the same sizes. The i.i.d.\ cost of rotation ($1.3$--$3.0$
-points) is eliminated, under masked Adam, by the relative-novelty gate on learnable streams ($95.0\%$ vs.\ $95.0\%$
-without rotation); under a stateless optimiser the same gate must instead be committed to
-sleep-bout-like episodes with a minimum on-duration, which then weakly dominate always-on
-rotation ($92.0/94.2$ vs.\ $92.0/93.3$ over six seeds). The substrate's $5\%$ activity
-fraction, an early inherited choice, turns out to tax both regimes: relaxing it to
-$10$--$15\%$ improves both axes at once ($92.7/94.7$ on split-MNIST) and shrinks
-at source the price the gate exists to refund. The price reverses into a $+2.5$ to $+6.5$ point \emph{gain} on harder data
-(split CIFAR-10), where the full ordering of methods transfers. We further show that
-surprise-triggered waking replay fails at any volume, that the trigger must be homeostatic, and
-that the residual advantage of offline nights is confined to very small episodic buffers on
-narrow substrates, and that sleep-anchored synaptic down-selection helps precisely where an
-offline window exists. We
-provide exactness proofs for the isolation rule and release all code, checkpoints and diagnostics.
+offline nights degrade sharply at the same sizes. The i.i.d.\ cost of rotation is removed either by gating rotation on relative novelty (under
+masked Adam) or, under the stateless optimiser, by committing the gate to sleep-bout-like
+episodes ($92.0/94.2$ vs.\ $92.0/93.3$ over six seeds); relaxing the substrate's inherited
+$5\%$ activity fraction to $10$--$15\%$ improves both axes at once ($92.7/94.7$) and shrinks
+the price at source. On split CIFAR-10 the ordering of methods transfers, the rotation price
+reverses into a gain, and a substrate decomposition shows that the remaining gap to
+backpropagation-with-replay is dense activation, not credit assignment. We provide exactness
+proofs for the isolation rule and release all code, checkpoints and diagnostics.
 \end{abstract}
 
 % ---------------------------------------------------------------- 1
@@ -459,7 +453,9 @@ $64$) reaches $91.3\pm0.3\%$ with no offline phase, above the best offline night
 ($90.7\pm0.4\%$) and far above unmasked interleaved ER at the same budget ($86.1$--$86.9\%$);
 the stateless-SGD variant of Section~\ref{sec:direction} reaches $\mathbf{92.0\pm0.6\%}$.
 Adding a night on top of continuous local sleep yields nothing ($90.9\pm0.3$ vs.\ $90.8\pm0.1$):
-once consolidation runs during wake, the offline phase is redundant at this buffer size.
+once consolidation runs during wake, the offline phase is redundant at this buffer size. At very
+small buffers ($K{=}200$) the night retains an edge only in combination with narrow substrates;
+the mechanism triangulation is in Appendix~\ref{app:k200}.
 
 \subsection{Isolation stabilises micro-batch replay}
 Figure~\ref{fig:batch}: masked refractory replay is flat in replay batch size from $256$ down to
@@ -500,7 +496,8 @@ $86.0\pm1.3$ static): all-or-none OFF periods beat turned-down gain, echoing the
 finding that tonic firing-rate reduction does not discharge local sleep pressure while ON/OFF
 alternation does \citep{driessen2026}. Table~\ref{tab:ablation} in
 Section~\ref{sec:ablation} collects these controls together with the remaining component
-knockouts and the substrate ladder.
+knockouts; a two-sided learning-rate sweep (Appendix~\ref{app:eta}) shows the comparison is a
+plateau rather than a knife-edge, with masked Adam already at its own best.
 
 \subsection{When replay must be rare: homeostatic bursts, never surprise}
 Figure~\ref{fig:batch} (right): at ${\sim}12\%$ of replay events, clocked bursts of $8$--$16$
@@ -513,32 +510,16 @@ after task switches and starves later epochs. The waking trigger must be homeost
 opposite of the night's optimal trigger, which our earlier controller showed \emph{should} be
 novelty-timed.
 
-\subsection{The i.i.d.\ price of rotation and the novelty gate}
-Figure~\ref{fig:rotation}: always-on rotation costs $1.3$--$3.0$ points on i.i.d.\ MNIST
-($95.0\to92.0$--$93.7$). Gating rotation by \emph{unit-level pressure} only trades the axes
-(static $91.6\to94.0$ as sequential $88.8\to80.7$; no dominant point). The \emph{relative
-novelty} gate \eqref{eq:nov} removes the price at no sequential cost on MNIST: static
-$\mathbf{95.0\pm0.4}$ (rotation on $1.4$--$17\%$ of batches), sequential $90.3\pm0.4$
-($\beta{=}1.5$) or $90.9\pm0.6$ ($\beta{=}1.1$). On split CIFAR-10 the price \emph{reverses}:
-rotation gains $+2.5$ (refractory) to $+6.5$ points (pressure-selected rest) on the static axis
---- forced rotation acts as a regulariser in the underfit regime --- while the pure novelty gate
-\eqref{eq:nov} \emph{misfires} there (sequential $19.1\pm1.1$: fast/slow $\to1$ on a stream that
-never becomes predictable, so rotation shuts off exactly where it helps). The progress-keyed gate
-\eqref{eq:prog} resolves this with one setting across all four regimes: split CIFAR-10 sequential
-$27.2\pm0.7$ and static $25.3\pm1.0$ (both $=$ always-on rotation), split-MNIST $90.4\pm0.9$,
-i.i.d.\ MNIST $94.3\pm0.2$ at $\gamma{=}0.5$ --- retaining a residual $0.7$-point static cost
-relative to the pure novelty gate on easy streams, the price of the unmastered clause. (All
-gate numbers in this subsection use masked Adam; under the stateless optimiser the gate must be
-committed to minimum-duration bouts --- Section~\ref{sec:ablation}.)
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{figs/fig_rotation.pdf}
-\caption{\textbf{Rotation: price, trade-off, and gate.} Left: on i.i.d.\ MNIST the novelty gate
-restores no-rotation accuracy. Middle: on split-MNIST rotation is required and the gate keeps it.
-Right: on split CIFAR-10 (grayscale) rotation is a gain on \emph{both} axes.}
-\label{fig:rotation}
-\end{figure}
+\subsection{The i.i.d.\ price of rotation}
+Always-on rotation costs $1.3$--$3.0$ points on i.i.d.\ MNIST; on split CIFAR-10 the price
+\emph{reverses} into a $+2.5$ to $+6.5$-point static gain --- forced rotation is a regulariser
+in the underfit regime. Under masked Adam, a relative-novelty/progress gate
+(Eqs.~\eqref{eq:nov}--\eqref{eq:prog}) removes the price with one setting across all four
+regimes; the full Adam-era gate study --- including why absolute thresholds provably cannot
+serve and why unit-level pressure gating only trades the axes --- is in
+Appendix~\ref{app:gates}. Under the stateless optimiser the gate must instead be committed to
+bouts (Section~\ref{sec:ablation}), and the sparsity dial (Section~\ref{sec:dial}) shrinks
+the price at source.
 
 \subsection{Transfer to CIFAR-10}
 On split CIFAR-10 (grayscale, same protocol) the ordering transfers and widens: refractory local
@@ -568,26 +549,6 @@ activation, not backpropagation's credit assignment: on the substrate this proje
 the local rule gives nothing away. The advantage over \emph{other local schedules} (nights,
 unmasked ER) remains robust across all three input regimes.
 
-\subsection{Small buffers: what the night still buys}
-At $K{=}200$ the night appeared to keep a $\sim$2.6-point edge in our earlier phases; the final
-triangulation (Figure~\ref{fig:k200}) dissolves most of it into a substrate mismatch. On the
-\emph{same} $512$--$256$/$5\%$ substrate, the night reaches $84.0\pm3.4$ while noisy
-pressure-burst local sleep reaches $84.3\pm1.0$ and local$+$night $84.8\pm0.9$ --- parity, with
-three-fold smaller variance for the wake-side scheme. The strongest tiny-buffer number remains
-the narrower $256$--$128$/$10\%$ night ($86.9$), so the offline window retains an advantage only
-in combination with narrow substrates. The mechanism results stand: replay diversity (noise
-$\sigma{=}0.2$) is specifically a wake-side lever --- it lifts every local scheme
-($81.8\pm2.9\to84.3\pm1.0$) and \emph{hurts} the night ($84.0\to81.8\pm3.2$) --- and
-\emph{unmasked} waking replay collapses ($71.0\pm1.7$): isolation is a benefit, not a cost, at
-every buffer size we tested.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=.6\linewidth]{figs/fig_k200.pdf}
-\caption{\textbf{$K=200$ mechanism triangulation.} Isolation helps, diversity helps only during
-wake, and the irreducible advantage of the night at tiny buffers is its interference-free window.}
-\label{fig:k200}
-\end{figure}
 
 \subsection{Energy}
 Converted to spiking inference ($T_s{=}8$), the current default system (bout-gated rotation,
@@ -601,27 +562,13 @@ degrades beyond $T_s{=}8$ ($94.5\to91.2$ at $T_s{=}32$) --- consistent with rota
 sparser codes (final hidden dimensionality $12.7$ vs.\ $28.8$; $60$ vs.\ $91$ spikes per
 sample at $T_s{=}8$).
 
-\subsection{Sleep-anchored down-selection}
-Motivated by the synaptic homeostasis hypothesis \citep{tononi2014}, we anchored structural
-plasticity (prune the weakest fraction of live synapses, regrow the same number with a distance
-bias) to consolidation windows, using the Kolen--Pollack decay of \eqref{eq:kp} as the natural
-weakening force on unreplayed synapses. The verdict splits three ways at matched turnover
-($\approx5\%$ per epoch). On the \emph{continuous} local-sleep substrate pruning is free
-(sleep-anchored $90.9\pm0.2$, clocked $90.6\pm0.4$, none $90.8\pm0.1$). On the pure
-\emph{night} substrate, pruning immediately after each night helps substantially
-($87.2\pm3.8$ vs.\ $84.1\pm1.3$) --- offline down-selection rescues the wide-sparse night.
-On the \emph{episodic-burst} substrate pruning is harmful ($84.6\pm0.5$ burst-anchored,
-$86.6\pm1.3$ clocked, vs.\ $89.9\pm0.1$ without): when replay is rare, synapses are cut before
-enough consolidation events have protected them. Down-selection, like replay itself, needs
-either density or an offline window.
-
 \subsection{Negative results}
 For the record, the following were falsified under matched budgets: a frozen dentate-gyrus-style
 sparse expansion front-end (input decorrelation does not propagate through learned \kwta{} layers:
 task overlap at the input drops $0.79\to0.18$ yet every downstream metric worsens by $3$--$11$
 points); generative (REM) replay as a substitute for episodic samples; margin-based reverse
 learning; surprise-gated memory \emph{writing}; multiplicative burst coding; absolute-threshold
-rotation gates; pruning anchored to sparse replay bursts (above); soft (gain-reduction) rotation
+rotation gates; pruning anchored to sparse replay bursts (Appendix~\ref{app:downsel}); soft (gain-reduction) rotation
 and mirror-direction isolation (Section~\ref{sec:direction}); an OFF-side gate refractory ---
 the flip-flop's inactive half in this system; strongly coupled synaptic anchors; and
 utility-exempt rotation as a route past the bout gate (all Section~\ref{sec:ablation}).
@@ -632,9 +579,10 @@ utility-exempt rotation as a route past the bout gate (all Section~\ref{sec:abla
 
 The system under test is a conjunction of five ingredients: a biologically constrained
 substrate, the exact isolation mask \eqref{eq:mask}, the refractory rotation, a stateless
-optimiser, and the progress-keyed gate \eqref{eq:prog}. This section removes or replaces one
-ingredient at a time, at two levels: the consolidation mechanism (Table~\ref{tab:ablation}) and
-the substrate beneath it (Table~\ref{tab:substrate}). Every mechanism cell shares the same
+optimiser, and the progress-keyed gate \eqref{eq:prog}. This section removes or replaces one ingredient of the consolidation mechanism at a time
+(Table~\ref{tab:ablation}). The substrate beneath it was fixed by earlier ablation ladders;
+its full cost accounting --- $1.2$ points below a dense backpropagation MLP at $4\times$
+fewer synaptic operations per pass --- is reproduced in Appendix~\ref{app:substrate}. Every mechanism cell shares the same
 substrate ($512$--$256$ hidden, $5\%$ \kwta{}, $30\%$ distance-dependent connectivity), the same
 buffer ($K{=}1000$, random writing) and the same replay budget (waking batch $16$, replay batch
 $16$ after every waking batch), three seeds each.
@@ -707,20 +655,10 @@ bouts chain into near-permanent rotation on the sequential stream ($94\%$ of bat
 only $63\%$ of the static one. The result --- $92.0\pm0.4$ sequential at $94.2\pm0.4$ static over six
 seeds --- matches always-on rotation exactly on the sequential axis ($92.0\pm0.6$) while
 refunding $0.9$ of its static price ($93.3\pm0.2$): a clean weak domination that retires
-always-on rotation as an operating point. Bout length is a proper knob: $M{=}512$ (duties
-$0.61/0.38$) gives $91.7\pm0.4/94.0\pm0.5$, already recovering most of what the per-batch gate
-loses, while $M{=}4096$ drives the static duty to $0.94$ and the refund vanishes
-($93.4\pm0.1$). The static ceiling of silent isolation ($96.0$) stays out of reach ---
-rotation, even in bouts, keeps a residual price --- so the committed gate buys
-regime-adaptivity, not a free lunch. Completing the flip-flop with an OFF-side refractory
-(once a bout expires, triggers are ignored for $M_{\mathrm{off}}$ batches) is a clean null:
-short refractories ($M_{\mathrm{off}}{\le}1024$) never engage on the static stream --- a bout
-expires only after its trigger has been quiet for $M$ batches, so static re-triggering is not
-flicker to begin with --- while a long one ($M_{\mathrm{off}}{=}4096$) lowers the static duty
-to $0.53$ without moving static accuracy ($94.0\pm0.7$) and monotonically erodes the
-sequential axis ($92.1\to91.0$, occasionally masking a task switch). Together with the
-$M{=}512$ cell (duty $0.38$, static $94.0$), this locates the residual static price in the
-rotation of settled coalitions itself, not in how often the gate fires.
+always-on rotation as an operating point. The static ceiling of silent isolation ($96.0$) stays out of reach --- rotation, even in
+bouts, keeps a residual price, which bout-length and OFF-refractory controls locate in the
+rotation of settled coalitions itself, not in how often the gate fires
+(Appendix~\ref{app:probes}).
 
 The middle block tests the exactness requirement itself and yields the sharpest surprise of
 the table. Propositions~\ref{prop:pre}--\ref{prop:post} require Adam's moments to advance only
@@ -735,57 +673,21 @@ $\approx\!1$ point. Statelessness is the only choice that keeps the guarantee an
 accuracy at once: the exactness of Propositions~\ref{prop:pre}--\ref{prop:post} costs about
 one point when bought from Adam, and nothing when bought from heavy-ball SGD.
 
-Two further notes complete the picture. The stateless gain also vanishes at half cadence:
-SGD with replay batch $64$ every other waking batch reaches $91.3\pm0.3$, identical to masked
-Adam on the same schedule --- statelessness pays only while consolidation runs continuously.
-And the replacement block collects, in one place, that every structural alternative loses on
-the sequential axis: the offline night on this substrate ($84.1$), the protected-past
-direction ($81.3$), softened rotation ($88.4$), unmasked ER ($86.9$), with the strongest
-competitor --- the night on its preferred narrow substrate ($90.7$) --- still below the
-always-on operating point.
-
-\subsection{Sensitivity to the learning rate}
-The stateless comparison invites an objection: SGD's $\eta$ was chosen, Adam's was left at its
-default. A two-sided sweep dissolves it. Under always-on rotation, SGD holds a sequential
-plateau over $\eta\in[0.01,0.02]$ ($91.9\pm0.5$/$92.0\pm0.6$) and a static plateau over
-$[0.02,0.05]$ ($93.3$--$93.7$), decaying gracefully outside ($86.3$/$89.2$ at $\eta{=}0.1$);
-$\eta{=}0.02$ is the joint optimum. Masked Adam, swept over a tenfold range, has its
-sequential optimum exactly at the default ($90.8\pm0.1$ at $10^{-3}$; $88.6$ at
-$3{\cdot}10^{-4}$, $88.9$ at $3{\cdot}10^{-3}$) --- the comparison of
-Section~\ref{sec:direction} was already at Adam's best --- and no Adam setting reaches the
-stateless joint point ($3{\cdot}10^{-3}$ buys $93.6$ static at a three-point sequential cost).
-Unmasked SGD is poor and unstable at \emph{every} rate ($84$--$88$, seed deviations
-$1.8$--$4.1$, three- to eight-fold those of the masked runs), making the stabilising role of
-isolation a cross-$\eta$ fact. The bout-committed gate inherits the plateau, and the optimum
-shifts one notch down on CIFAR ($\eta{=}0.01$).
+One budget note completes the block: the stateless gain vanishes at half cadence
+($91.3\pm0.3$ with replay batch $64$ every other batch, identical to masked Adam) ---
+statelessness pays only while consolidation runs continuously.
 
 \subsection{Two probes of the residual static price}
 The OFF-refractory null located the bout gate's residual static price ($94.2$ vs.\ $96.0$
-rotation-free) in the rotation of settled coalitions itself. Two mechanisms attack that
-diagnosis directly; one is a clean negative, one a modest positive.
-
-\emph{Utility-exempt rotation} spares the top-$q$ units by long-term use trace from ever
-being benched, so the settled coalitions stay awake. It traces a smooth trade-off between
-always-on rotation and the rotation-free system ($q{=}0.10$: $90.9\pm0.1/94.2\pm0.2$;
-$q{=}0.25$: $89.1\pm0.4/95.4\pm0.2$), but the bout gate beats the $q{=}0.10$ point by $+1.1$
-sequential at equal static: \emph{temporal commitment dominates structural exemption},
-recapitulating at the utility level what unit-level pressure gating showed earlier
-(Figure~\ref{fig:rotation}) --- any structural narrowing of the rotation pool is paid for in
-replay-channel width.
-
-\emph{Two-timescale synapses} give every weight a slow anchor in the spirit of synaptic
-consolidation cascades \citep{benna2016}: the fast weight decays toward its anchor at rate
-$\lambda$ while the anchor absorbs it at rate $\mu$, ticking only on waking updates so the
-exactness of the replay path is untouched. The strong hypothesis --- that settled function
-living in the anchor would dissolve rotation's static price --- is falsified: across
-$\lambda\in[3{\cdot}10^{-4},3{\cdot}10^{-3}]$, $\mu\in[10^{-4},10^{-3}]$ no cell exceeds
-the anchor-free static accuracy, and strong coupling hurts both axes (the anchor becomes a
-lagging drag). Weak symmetric coupling ($\lambda{=}\mu{=}3{\cdot}10^{-4}$), however, acts as
-a \emph{sequential stabiliser}: $92.4\pm0.2$, the best sequential cell in
-Table~\ref{tab:ablation} with the seed variance halved, at static parity --- weakly dominating
-plain always-on rotation. Anchor and bout gate compose sub-additively
-($92.3\pm0.3/93.8\pm0.5$, between the parents). Figure~\ref{fig:frontier} draws the
-resulting operating frontier.
+rotation-free) in the rotation of settled coalitions itself.
+Two mechanisms attack that diagnosis directly (details in Appendix~\ref{app:probes}).
+\emph{Utility-exempt rotation} (sparing the top-$q$ long-use units from ever being benched)
+only traces a trade-off that the bout gate dominates: temporal commitment beats structural
+exemption. \emph{Two-timescale synapses} in the spirit of synaptic consolidation cascades
+\citep{benna2016} fail to dissolve the price, but weak symmetric coupling acts as a
+\emph{sequential stabiliser}: $92.4\pm0.2$ --- the best sequential cell in
+Table~\ref{tab:ablation}, with the seed variance halved --- at static parity. Anchor and bout
+gate compose sub-additively. Figure~\ref{fig:frontier} draws the resulting operating frontier.
 
 \begin{figure}[t]
 \centering
@@ -825,72 +727,14 @@ room. Third, asymmetric schedules (a mild input-facing layer above a sparse deep
 levied at every layer. The dial is free elsewhere: synaptic operations rise only $3$--$5\%$,
 and spiking inference stays input-dominated ($94.0\%$ at $120$\,nJ, $T_s{=}8$, at $15\%$;
 monotone in $T_s$ as before). We keep $5\%$ as the substrate of record for
-Tables~\ref{tab:ablation}--\ref{tab:substrate} --- every mechanism comparison above is
-internally matched, and the orderings we spot-checked at $10$--$15\%$ are preserved --- but
+Table~\ref{tab:ablation} and Appendix~\ref{app:substrate} --- every mechanism comparison
+above is internally matched, and the orderings we spot-checked at $10$--$15\%$ are preserved
+--- but
 the dial, not the gate, is the cheapest cure for rotation's static price
 (Figure~\ref{fig:frontier}, orange).
 
-\subsection{The price of the substrate}
 
-Table~\ref{tab:substrate} traces the path from a dense backpropagation MLP to the substrate
-used throughout, on i.i.d.\ MNIST where each constraint's cost is cleanest. The upper block is
-cumulative; the lower block replaces one ingredient at its stage and is to be compared with
-the matching cumulative row.
 
-\begin{table}[t]
-\centering
-\caption{\textbf{Substrate ablation} on i.i.d.\ MNIST ($256$--$128$ hidden core, three seeds).
-``Syn.\ ops'' is the fraction of the dense MLP's synaptic operations in one forward pass.
-Upper block: constraints added cumulatively; lower block: one ingredient replaced at its stage.}
-\label{tab:substrate}
-\small
-\begin{tabular}{@{}lcc@{}}
-\toprule
-Substrate & Accuracy & Syn.\ ops \\
-\midrule
-dense backpropagation MLP (autograd reference) & $97.7\pm0.1$ & 1.00 \\
-local burst-error learner, unconstrained & $97.8\pm0.1$ & 0.85 \\
-$+$ bounded error, Dale's law, sign-concordant feedback (no transport) & $97.1\pm0.0$ & 0.85 \\
-$+$ \kwta{} $10\%$ & $97.0\pm0.2$ & 0.80 \\
-$+$ relaxation $T{=}5$ & $97.0\pm0.1$ & 0.80 \\
-$+$ $30\%$ distance-dependent connectivity & $96.5\pm0.2$ & 0.24 \\
-$+$ burst gate and burst baseline & $96.3\pm0.2$ & 0.24 \\
-$+$ single-phase burst sweep replacing relaxation (\emph{final substrate}) & $96.5\pm0.1$ & 0.24 \\
-\midrule
-random wiring instead of distance-dependent, equal density & $95.4\pm0.0$ & 0.24 \\
-one settling step ($T{=}1$) instead of five & $17.9\pm6.8$ & 0.80 \\
-weight transport restored (mirroring, no KP decay) & $96.3\pm0.2$ & 0.24 \\
-Kolen--Pollack decay removed & $96.3\pm0.1$ & 0.24 \\
-heavy-ball SGD instead of Adam ($\eta=0.02$) & $95.2\pm0.3$ & 0.24 \\
-\kwta{} $5\%$ / $2\%$ instead of $10\%$ & $95.9\pm0.1$ / $94.2\pm0.2$ & 0.79/0.78 \\
-multiplicative burst coding & $78.8\pm1.9$ & 0.24 \\
-training on $T_s{=}8$ spike counts & $80.0\pm0.8$ & 0.24 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The cumulative ladder prices the entire biological constraint set at $1.2$ points below the
-dense backpropagation reference ($97.7\to96.5$) for $4\times$ fewer synaptic operations per
-pass; the local burst-error objective itself costs nothing ($97.8$ unconstrained). No single
-constraint is expensive: the bounded-error/Dale/no-transport trio costs $0.7$, $10\%$
-\kwta{} one tenth of a point, and the $70\%$ connectivity cut half a point --- of which
-distance-dependent wiring recovers $+1.1$ over random wiring at equal density. The lower
-block adds three cautions. Settling cannot merely be shortened ($T{=}1$ collapses to
-$17.9$); the single-phase burst sweep is the principled replacement, matching the $T{=}5$
-accuracy in a single pass. The Kolen--Pollack decay and even fully restored weight transport
-are accuracy-neutral at this scale --- the decay earns its keep as a regulariser on harder
-inputs, not as an aligner. And the two spiking-flavoured training schemes fail outright:
-spiking is affordable at \emph{inference} (the energy measurements above), not as a
-training-time code.
-
-Finally, the two tables disagree about the optimiser in an instructive way: on the plain
-substrate SGD \emph{loses} $1.3$ points to Adam ($95.2$ vs.\ $96.5$), yet inside the
-isolated-consolidation loop it wins on both axes. Per-synapse adaptive state is an asset
-while every synapse trains on every batch and a liability once updates become intermittently
-mask-confined --- the staleness mechanism of Table~\ref{tab:ablation}'s middle block seen
-from the other side. The optimiser is not a neutral implementation detail: it interacts with
-the sleep machinery, and the right choice reverses between the static substrate and the
-consolidating system.
 
 % ---------------------------------------------------------------- 6
 \section{Discussion}
@@ -954,6 +798,203 @@ $\sim\!1.2\times$ the night's replay samples, pays nothing on learnable i.i.d.\ 
 outright on harder data, and runs at a twentieth of dense-rate inference energy when spiking.
 The offline night retains one irreducible role --- consolidating very small episodic stores ---
 which sharpens, rather than blurs, the division of labour between wake and sleep.
+
+
+% ---------------------------------------------------------------- appendices
+\appendix
+
+\section{The price of the substrate}
+\label{app:substrate}
+
+Table~\ref{tab:substrate} traces the path from a dense backpropagation MLP to the substrate
+used throughout, on i.i.d.\ MNIST where each constraint's cost is cleanest. The upper block is
+cumulative; the lower block replaces one ingredient at its stage and is to be compared with
+the matching cumulative row.
+
+\begin{table}[t]
+\centering
+\caption{\textbf{Substrate ablation} on i.i.d.\ MNIST ($256$--$128$ hidden core, three seeds).
+``Syn.\ ops'' is the fraction of the dense MLP's synaptic operations in one forward pass.
+Upper block: constraints added cumulatively; lower block: one ingredient replaced at its stage.}
+\label{tab:substrate}
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Substrate & Accuracy & Syn.\ ops \\
+\midrule
+dense backpropagation MLP (autograd reference) & $97.7\pm0.1$ & 1.00 \\
+local burst-error learner, unconstrained & $97.8\pm0.1$ & 0.85 \\
+$+$ bounded error, Dale's law, sign-concordant feedback (no transport) & $97.1\pm0.0$ & 0.85 \\
+$+$ \kwta{} $10\%$ & $97.0\pm0.2$ & 0.80 \\
+$+$ relaxation $T{=}5$ & $97.0\pm0.1$ & 0.80 \\
+$+$ $30\%$ distance-dependent connectivity & $96.5\pm0.2$ & 0.24 \\
+$+$ burst gate and burst baseline & $96.3\pm0.2$ & 0.24 \\
+$+$ single-phase burst sweep replacing relaxation (\emph{final substrate}) & $96.5\pm0.1$ & 0.24 \\
+\midrule
+random wiring instead of distance-dependent, equal density & $95.4\pm0.0$ & 0.24 \\
+one settling step ($T{=}1$) instead of five & $17.9\pm6.8$ & 0.80 \\
+weight transport restored (mirroring, no KP decay) & $96.3\pm0.2$ & 0.24 \\
+Kolen--Pollack decay removed & $96.3\pm0.1$ & 0.24 \\
+heavy-ball SGD instead of Adam ($\eta=0.02$) & $95.2\pm0.3$ & 0.24 \\
+\kwta{} $5\%$ / $2\%$ instead of $10\%$ & $95.9\pm0.1$ / $94.2\pm0.2$ & 0.79/0.78 \\
+multiplicative burst coding & $78.8\pm1.9$ & 0.24 \\
+training on $T_s{=}8$ spike counts & $80.0\pm0.8$ & 0.24 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The cumulative ladder prices the entire biological constraint set at $1.2$ points below the
+dense backpropagation reference ($97.7\to96.5$) for $4\times$ fewer synaptic operations per
+pass; the local burst-error objective itself costs nothing ($97.8$ unconstrained). No single
+constraint is expensive: the bounded-error/Dale/no-transport trio costs $0.7$, $10\%$
+\kwta{} one tenth of a point, and the $70\%$ connectivity cut half a point --- of which
+distance-dependent wiring recovers $+1.1$ over random wiring at equal density. The lower
+block adds three cautions. Settling cannot merely be shortened ($T{=}1$ collapses to
+$17.9$); the single-phase burst sweep is the principled replacement, matching the $T{=}5$
+accuracy in a single pass. The Kolen--Pollack decay and even fully restored weight transport
+are accuracy-neutral at this scale --- the decay earns its keep as a regulariser on harder
+inputs, not as an aligner. And the two spiking-flavoured training schemes fail outright:
+spiking is affordable at \emph{inference} (the energy measurements above), not as a
+training-time code.
+
+Finally, the two tables disagree about the optimiser in an instructive way: on the plain
+substrate SGD \emph{loses} $1.3$ points to Adam ($95.2$ vs.\ $96.5$), yet inside the
+isolated-consolidation loop it wins on both axes. Per-synapse adaptive state is an asset
+while every synapse trains on every batch and a liability once updates become intermittently
+mask-confined --- the staleness mechanism of Table~\ref{tab:ablation}'s middle block seen
+from the other side. The optimiser is not a neutral implementation detail: it interacts with
+the sleep machinery, and the right choice reverses between the static substrate and the
+consolidating system.
+
+\section{The per-batch rotation gates under masked Adam}
+\label{app:gates}
+
+Figure~\ref{fig:rotation}: always-on rotation costs $1.3$--$3.0$ points on i.i.d.\ MNIST
+($95.0\to92.0$--$93.7$). Gating rotation by \emph{unit-level pressure} only trades the axes
+(static $91.6\to94.0$ as sequential $88.8\to80.7$; no dominant point). The \emph{relative
+novelty} gate \eqref{eq:nov} removes the price at no sequential cost on MNIST: static
+$\mathbf{95.0\pm0.4}$ (rotation on $1.4$--$17\%$ of batches), sequential $90.3\pm0.4$
+($\beta{=}1.5$) or $90.9\pm0.6$ ($\beta{=}1.1$). On split CIFAR-10 the price \emph{reverses}:
+rotation gains $+2.5$ (refractory) to $+6.5$ points (pressure-selected rest) on the static axis
+--- forced rotation acts as a regulariser in the underfit regime --- while the pure novelty gate
+\eqref{eq:nov} \emph{misfires} there (sequential $19.1\pm1.1$: fast/slow $\to1$ on a stream that
+never becomes predictable, so rotation shuts off exactly where it helps). The progress-keyed gate
+\eqref{eq:prog} resolves this with one setting across all four regimes: split CIFAR-10 sequential
+$27.2\pm0.7$ and static $25.3\pm1.0$ (both $=$ always-on rotation), split-MNIST $90.4\pm0.9$,
+i.i.d.\ MNIST $94.3\pm0.2$ at $\gamma{=}0.5$ --- retaining a residual $0.7$-point static cost
+relative to the pure novelty gate on easy streams, the price of the unmastered clause. (All
+gate numbers in this subsection use masked Adam; under the stateless optimiser the gate must be
+committed to minimum-duration bouts --- Section~\ref{sec:ablation}.)
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/fig_rotation.pdf}
+\caption{\textbf{Rotation: price, trade-off, and gate.} Left: on i.i.d.\ MNIST the novelty gate
+restores no-rotation accuracy. Middle: on split-MNIST rotation is required and the gate keeps it.
+Right: on split CIFAR-10 (grayscale) rotation is a gain on \emph{both} axes.}
+\label{fig:rotation}
+\end{figure}
+
+\section{Small buffers: what the night still buys}
+\label{app:k200}
+
+At $K{=}200$ the night appeared to keep a $\sim$2.6-point edge in our earlier phases; the final
+triangulation (Figure~\ref{fig:k200}) dissolves most of it into a substrate mismatch. On the
+\emph{same} $512$--$256$/$5\%$ substrate, the night reaches $84.0\pm3.4$ while noisy
+pressure-burst local sleep reaches $84.3\pm1.0$ and local$+$night $84.8\pm0.9$ --- parity, with
+three-fold smaller variance for the wake-side scheme. The strongest tiny-buffer number remains
+the narrower $256$--$128$/$10\%$ night ($86.9$), so the offline window retains an advantage only
+in combination with narrow substrates. The mechanism results stand: replay diversity (noise
+$\sigma{=}0.2$) is specifically a wake-side lever --- it lifts every local scheme
+($81.8\pm2.9\to84.3\pm1.0$) and \emph{hurts} the night ($84.0\to81.8\pm3.2$) --- and
+\emph{unmasked} waking replay collapses ($71.0\pm1.7$): isolation is a benefit, not a cost, at
+every buffer size we tested.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.6\linewidth]{figs/fig_k200.pdf}
+\caption{\textbf{$K=200$ mechanism triangulation.} Isolation helps, diversity helps only during
+wake, and the irreducible advantage of the night at tiny buffers is its interference-free window.}
+\label{fig:k200}
+\end{figure}
+
+\section{Sleep-anchored down-selection}
+\label{app:downsel}
+
+Motivated by the synaptic homeostasis hypothesis \citep{tononi2014}, we anchored structural
+plasticity (prune the weakest fraction of live synapses, regrow the same number with a distance
+bias) to consolidation windows, using the Kolen--Pollack decay of \eqref{eq:kp} as the natural
+weakening force on unreplayed synapses. The verdict splits three ways at matched turnover
+($\approx5\%$ per epoch). On the \emph{continuous} local-sleep substrate pruning is free
+(sleep-anchored $90.9\pm0.2$, clocked $90.6\pm0.4$, none $90.8\pm0.1$). On the pure
+\emph{night} substrate, pruning immediately after each night helps substantially
+($87.2\pm3.8$ vs.\ $84.1\pm1.3$) --- offline down-selection rescues the wide-sparse night.
+On the \emph{episodic-burst} substrate pruning is harmful ($84.6\pm0.5$ burst-anchored,
+$86.6\pm1.3$ clocked, vs.\ $89.9\pm0.1$ without): when replay is rare, synapses are cut before
+enough consolidation events have protected them. Down-selection, like replay itself, needs
+either density or an offline window.
+
+
+\section{Learning-rate sensitivity}
+\label{app:eta}
+
+The stateless comparison invites an objection: SGD's $\eta$ was chosen, Adam's was left at its
+default. A two-sided sweep dissolves it. Under always-on rotation, SGD holds a sequential
+plateau over $\eta\in[0.01,0.02]$ ($91.9\pm0.5$/$92.0\pm0.6$) and a static plateau over
+$[0.02,0.05]$ ($93.3$--$93.7$), decaying gracefully outside ($86.3$/$89.2$ at $\eta{=}0.1$);
+$\eta{=}0.02$ is the joint optimum. Masked Adam, swept over a tenfold range, has its
+sequential optimum exactly at the default ($90.8\pm0.1$ at $10^{-3}$; $88.6$ at
+$3{\cdot}10^{-4}$, $88.9$ at $3{\cdot}10^{-3}$) --- the comparison of
+Section~\ref{sec:direction} was already at Adam's best --- and no Adam setting reaches the
+stateless joint point ($3{\cdot}10^{-3}$ buys $93.6$ static at a three-point sequential cost).
+Unmasked SGD is poor and unstable at \emph{every} rate ($84$--$88$, seed deviations
+$1.8$--$4.1$, three- to eight-fold those of the masked runs), making the stabilising role of
+isolation a cross-$\eta$ fact. The bout-committed gate inherits the plateau, and the optimum
+shifts one notch down on CIFAR ($\eta{=}0.01$).
+
+
+\section{Probes of the residual static price}
+\label{app:probes}
+
+\paragraph{Bout length and the OFF-side refractory.}
+Bout length is a proper knob: $M{=}512$ (duties
+$0.61/0.38$) gives $91.7\pm0.4/94.0\pm0.5$, already recovering most of what the per-batch gate
+loses, while $M{=}4096$ drives the static duty to $0.94$ and the refund vanishes
+($93.4\pm0.1$). The static ceiling of silent isolation ($96.0$) stays out of reach ---
+rotation, even in bouts, keeps a residual price --- so the committed gate buys
+regime-adaptivity, not a free lunch. Completing the flip-flop with an OFF-side refractory
+(once a bout expires, triggers are ignored for $M_{\mathrm{off}}$ batches) is a clean null:
+short refractories ($M_{\mathrm{off}}{\le}1024$) never engage on the static stream --- a bout
+expires only after its trigger has been quiet for $M$ batches, so static re-triggering is not
+flicker to begin with --- while a long one ($M_{\mathrm{off}}{=}4096$) lowers the static duty
+to $0.53$ without moving static accuracy ($94.0\pm0.7$) and monotonically erodes the
+sequential axis ($92.1\to91.0$, occasionally masking a task switch). Together with the
+$M{=}512$ cell (duty $0.38$, static $94.0$), this locates the residual static price in the
+rotation of settled coalitions itself, not in how often the gate fires.
+
+\paragraph{Structural exemption and synaptic anchoring.}
+\emph{Utility-exempt rotation} spares the top-$q$ units by long-term use trace from ever
+being benched, so the settled coalitions stay awake. It traces a smooth trade-off between
+always-on rotation and the rotation-free system ($q{=}0.10$: $90.9\pm0.1/94.2\pm0.2$;
+$q{=}0.25$: $89.1\pm0.4/95.4\pm0.2$), but the bout gate beats the $q{=}0.10$ point by $+1.1$
+sequential at equal static: \emph{temporal commitment dominates structural exemption},
+recapitulating at the utility level what unit-level pressure gating showed earlier
+(Figure~\ref{fig:rotation}) --- any structural narrowing of the rotation pool is paid for in
+replay-channel width.
+
+\emph{Two-timescale synapses} give every weight a slow anchor in the spirit of synaptic
+consolidation cascades \citep{benna2016}: the fast weight decays toward its anchor at rate
+$\lambda$ while the anchor absorbs it at rate $\mu$, ticking only on waking updates so the
+exactness of the replay path is untouched. The strong hypothesis --- that settled function
+living in the anchor would dissolve rotation's static price --- is falsified: across
+$\lambda\in[3{\cdot}10^{-4},3{\cdot}10^{-3}]$, $\mu\in[10^{-4},10^{-3}]$ no cell exceeds
+the anchor-free static accuracy, and strong coupling hurts both axes (the anchor becomes a
+lagging drag). Weak symmetric coupling ($\lambda{=}\mu{=}3{\cdot}10^{-4}$), however, acts as
+a \emph{sequential stabiliser}: $92.4\pm0.2$, the best sequential cell in
+Table~\ref{tab:ablation} with the seed variance halved, at static parity --- weakly dominating
+plain always-on rotation. Anchor and bout gate compose sub-additively
+($92.3\pm0.3/93.8\pm0.5$, between the parents).
+
 
 % ---------------------------------------------------------------- refs
 \begin{thebibliography}{99}\small
