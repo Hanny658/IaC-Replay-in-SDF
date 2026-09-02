@@ -221,6 +221,12 @@ Raw CIFAR：SGD 27.2±1.4 ≈ Adam 27.1——欠拟合体制无状态增益不�
 配置：`cif/cfeat_sgd_refr_e*`、`cfeat_bp_er_lr*`、`g15_sgd_anchor_*`、`g15_sgd_util*`、
 `g15_sgd_anchorblock_*`；旋钮 `anchor=(lam,mu)`、`util_q`、`bp_lr`。
 
+**15E 能耗重测**（`scripts/p15_spike.py`，新默认栈，静态 MNIST，seed 0，协议同 v10）：
+发作门系统 T_s=8 → **93.5% @ 118 nJ**（密集率网 2461 nJ 的 1/20.8、事件驱动率网 516 nJ 的
+1/4.4），且随 T_s 单调升（16→94.0）。**旧"校准交互"主张在 SGD 下反号**：轮休网现在是校准
+稳健方（T_s 单调），rotation-free 反而 T_s>8 劣化（94.5→91.2@32）——轮休塑造更稀疏的码
+（隐层维度 12.7 vs 28.8、每样本 60 vs 91 脉冲 @T_s=8）。Energy 小节与 FW (vi) 已改写。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，

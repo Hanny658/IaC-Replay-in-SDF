@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: b260108a-3c8a-4668-bb0c-63a09e66c838
-  modified: 2026-09-01T20:04:41.145Z
+  modified: 2026-09-02T01:13:38.057Z
 ---
 
 Overnight autonomous exploration 2026-09-01 -> 09-02 (~190 runs, all 3 seeds unless noted,
@@ -43,6 +43,14 @@ cortex.local_update, ticks on waking steps only so replay exactness untouched)
   13b's localisation of the price was right; exempting those coalitions pays proportionally.
 ## Phase 15D: anchor x bout combo: 92.3 +-0.3 / 93.8 +-0.5 -- between the parents, dominates
 neither; anchor and gate do not compose additively.
+
+## Phase 15E: energy re-measure on the new default (scripts/p15_spike.py, seed 0, v10 protocol)
+- Bout-gate system: T_s=8 -> 93.5% @ 118 nJ (1/20.8 of dense rate 2461 nJ, 1/4.4 of
+  event-driven rate 516 nJ), MONOTONE in T_s (16 -> 94.0 @ 239).
+- The v10 calibration-interaction claim REVERSES SIGN under SGD: rotation-trained nets are now
+  calibration-robust; rotation-FREE control degrades past T_s=8 (94.5 -> 91.2 @ 32).  Cause
+  consistent with rotation shaping sparser codes (hidden dim 12.7 vs 28.8; 60 vs 91
+  spikes/sample @ T_s=8).  Energy subsection + FW(vi) rewritten.
 
 ## 6-seed hardened frontier (MNIST)
 anchor 92.4/93.3 -> combo 92.3/93.8 -> bout M=2048 92.0 +-0.4 / 94.2 +-0.4 -> silent 89.0/96.0.

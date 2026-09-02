@@ -578,11 +578,16 @@ wake, and the irreducible advantage of the night at tiny buffers is its interfer
 \end{figure}
 
 \subsection{Energy}
-Converted to spiking inference ($T_s{=}8$), the full system runs at $91.6\%$ and
-$119$\,nJ/sample vs.\ $2461$\,nJ for dense rate inference ($20.7\times$) and $516$\,nJ for
-event-driven rate inference ($4.3\times$); the rotation-trained network loses accuracy beyond
-$T_s{=}8$ ($90.4$ at $16$), unlike its non-rotated control ($94.1$) --- an open interaction
-between rotation-shaped weights and threshold calibration.
+Converted to spiking inference ($T_s{=}8$), the current default system (bout-gated rotation,
+stateless SGD; rate accuracy $94.5\%$ on the measured seed) runs at $93.5\%$ and
+$118$\,nJ/sample vs.\ $2461$\,nJ for dense rate inference ($20.8\times$) and $516$\,nJ for
+event-driven rate inference ($4.4\times$), improving further with the time budget ($94.0\%$
+at $T_s{=}16$, $239$\,nJ). The calibration interaction we reported for the earlier Adam stack
+has \emph{reversed sign} under the stateless optimiser: the rotation-trained networks are now
+the calibration-robust ones (accuracy monotone in $T_s$), while the rotation-free control
+degrades beyond $T_s{=}8$ ($94.5\to91.2$ at $T_s{=}32$) --- consistent with rotation shaping
+sparser codes (final hidden dimensionality $12.7$ vs.\ $28.8$; $60$ vs.\ $91$ spikes per
+sample at $T_s{=}8$).
 
 \subsection{Sleep-anchored down-selection}
 Motivated by the synaptic homeostasis hypothesis \citep{tononi2014}, we anchored structural
@@ -890,7 +895,8 @@ refractory, utility exemption and synaptic anchoring are now all ruled out as ro
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
 (iv) convolutional and deeper stacks; (v) a throughput theory of the isolated channel predicting
 the required replay cadence from $\rho_\ell$, code overlap and the interference rate;
-(vi) the rotation--spiking calibration interaction beyond $T_s{=}8$.
+(vi) the optimiser-dependence of the rotation--spiking calibration interaction, whose sign
+reverses between the Adam and the stateless stack.
 
 % ---------------------------------------------------------------- 8
 \section{Conclusion}
