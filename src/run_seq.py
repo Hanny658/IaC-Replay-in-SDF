@@ -50,6 +50,7 @@ OUT = os.path.join(ROOT, "results", "bio", "seq")
 PARTS = os.path.join(OUT, "parts")
 
 TASKS = [(0, 1), (2, 3), (4, 5), (6, 7), (8, 9)]
+TASKS100 = [tuple(range(10 * i, 10 * i + 10)) for i in range(10)]  # split CIFAR-100: 10x10
 V7 = dict(RM.V6, sweep=True)  # v6 + single-phase burst sweep
 for k in ("T", "gamma", "spike", "hidden", "eta_override", "cosine"):  # run-loop keys, not net kwargs
     V7.pop(k, None)
@@ -542,6 +543,9 @@ CONFIGS = {
     **{f"cfeat_bp_er_w512_d30k15_lr{lt}": dict(model="bp", dataset="cifarf", buffer=1000, policy="random",
                                                replay="er", hidden=(512, 256), bp_lr=lr, bp_conn=0.30, bp_kwta=0.15)
        for lt, lr in (("3e4", 3e-4), ("1e3", 1e-3))},
+    **{f"cfeat_bp_er_w512_d30k10_lr{lt}": dict(model="bp", dataset="cifarf", buffer=1000, policy="random",
+                                               replay="er", hidden=(512, 256), bp_lr=lr, bp_conn=0.30, bp_kwta=0.10)
+       for lt, lr in (("3e4", 3e-4), ("1e3", 1e-3))},
     # 16b: asymmetric sparsity -- a milder input-facing layer buys feature capacity while the
     # deeper layer stays at 5% and keeps the isolation channel
     **{f"cfeat_sgd_refr_a{tag}{sfx}": dict(model="ctx", dataset="cifarf", buffer=1000, policy="random",
@@ -574,6 +578,117 @@ CONFIGS = {
                                             mask="refractory", opt="sgd", eta=0.02, hidden=(512, 256), active_frac=0.15,
                                             **({"static": True} if sfx else {}))
        for sfx in ("", "_static")},
+    # ---- phase 17: re-baselining the mechanism table on the 10% substrate (the sparsity
+    # dial's sequential optimum).  Same grid as Table 1, af=0.10; refr/bout/silent/ceiling
+    # cells already exist as g16_*.
+    **{f"{pre}g17_{name}_s10": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                    batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.10,
+                                    **({"static": True} if pre else {}), **kw)
+       for pre in ("", "static_")
+       for name, kw in {
+           "sgd_prog05": dict(mask="refr_prog", gamma_p=0.5, opt="sgd", eta=0.02),
+           "sgd_anchor": dict(mask="refractory", opt="sgd", eta=0.02, anchor=(3e-4, 3e-4)),
+           "sgd_none": dict(mask="none", opt="sgd", eta=0.02),
+           "adam_refr": dict(mask="refractory"),
+           "adam_leak": dict(mask="refractory", leak_moments=True),
+           "adam_none": dict(mask="none"),
+           "mirror": dict(mask="mirror"),
+           "soft": dict(mask="refr_soft"),
+       }.items()},
+    "g17_night_s10": dict(model="ctx", buffer=1000, policy="random", replay="nrem", hidden=(512, 256), active_frac=0.10),
+    "g17_ctx_none_s10": dict(model="ctx", hidden=(512, 256), active_frac=0.10),
+    # ---- phase 17 W3: re-baseline the remaining main-text narratives at af=0.10 with the
+    # stateless optimiser -- r1 headline schedules, the micro-batch curve, the burst-timing
+    # story, and the CIFAR orderings.
+    **{f"g17_{name}_s10": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                               batch_wake=16, hidden=(512, 256), active_frac=0.10,
+                               mask="refractory", opt="sgd", eta=0.02, **kw)
+       for name, kw in {
+           # r1 schedules
+           "sgd_cad2_br64": dict(cadence=2, batch_replay=64),
+           "sgd_br16_night": dict(cadence=1, batch_replay=16, night=True),
+           # micro-batch curve (br16 = the existing refr cell)
+           "sgd_br4": dict(cadence=1, batch_replay=4),
+           "sgd_br8": dict(cadence=1, batch_replay=8),
+           "sgd_br64": dict(cadence=1, batch_replay=64),
+           "sgd_br256": dict(cadence=1, batch_replay=256),
+           # timing story: even trickle, clocked burst, pressure burst, surprise burst
+           "sgd_cad8_br16": dict(cadence=8, batch_replay=16),
+           "sgd_burst16_128": dict(cadence=128, burst=16, batch_replay=16),
+           "sgd_pburst16": dict(cadence=1, gate="pressure", theta=6.4, burst=16, batch_replay=16),
+           "sgd_sburst16": dict(cadence=1, gate="surprise", theta=10.0, burst=16, batch_replay=16),
+       }.items()},
+    "g17_night_nb16_s10": dict(model="ctx", buffer=1000, policy="random", replay="nrem", night_batch=16,
+                               hidden=(512, 256), active_frac=0.10),
+    # CIFAR raw at s10 (bp_er / bp_none / substrate-free cells unchanged)
+    **{f"cif_s10_{name}": dict(model="ctx", dataset="cifar", buffer=1000, policy="random",
+                               hidden=(512, 256), active_frac=0.10, **kw)
+       for name, kw in {
+           "sgd_refr": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                            mask="refractory", opt="sgd", eta=0.01),
+           "sgd_none": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                            mask="none", opt="sgd", eta=0.01),
+           "night": dict(replay="nrem"),
+           "ctx_none": dict(),
+           "sgd_refr_static": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                   mask="refractory", opt="sgd", eta=0.01, static=True),
+           "sgd_none_static": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                   mask="none", opt="sgd", eta=0.01, static=True),
+       }.items()},
+    # feature-CIFAR at s10 (refr cell exists as cfeat_sgd_refr_s10)
+    **{f"cfeat_s10_{name}": dict(model="ctx", dataset="cifarf", buffer=1000, policy="random",
+                                 hidden=(512, 256), active_frac=0.10, **kw)
+       for name, kw in {
+           "night": dict(replay="nrem"),
+           "sgd_none": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                            mask="none", opt="sgd", eta=0.01),
+           "ctx_none": dict(),
+       }.items()},
+    # ---- phase 18: split CIFAR-100 (10 tasks x 10 classes) on the 10% record substrate --
+    # does the mechanism survive 2x the task switches and a per-class buffer collapse?
+    **{f"c100_{name}": dict(model="ctx", dataset="cifar100", buffer=1000, policy="random",
+                            hidden=(512, 256), active_frac=0.10, **kw)
+       for name, kw in {
+           "sgd_refr": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                            mask="refractory", opt="sgd", eta=0.01),
+           "sgd_none": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                            mask="none", opt="sgd", eta=0.01),
+           "sgd_block2048": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                 mask="refr_block", block=2048, gamma_p=0.5, opt="sgd", eta=0.01),
+           "night": dict(replay="nrem"),
+           "ctx_none": dict(),
+           "sgd_refr_static": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                   mask="refractory", opt="sgd", eta=0.01, static=True),
+           "sgd_none_static": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                   mask="none", opt="sgd", eta=0.01, static=True),
+       }.items()},
+    "c100_bp_er_1000": dict(model="bp", dataset="cifar100", buffer=1000, policy="random", replay="er", bp_lr=3e-4),
+    "c100_bp_none": dict(model="bp", dataset="cifar100", bp_lr=3e-4),
+    **{f"c100f_{name}": dict(model="ctx", dataset="cifar100f", buffer=1000, policy="random",
+                             hidden=(512, 256), active_frac=0.10, **kw)
+       for name, kw in {
+           "sgd_refr": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                            mask="refractory", opt="sgd", eta=0.01),
+           "sgd_none": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                            mask="none", opt="sgd", eta=0.01),
+           "sgd_block2048": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                 mask="refr_block", block=2048, gamma_p=0.5, opt="sgd", eta=0.01),
+           "night": dict(replay="nrem"),
+           "ctx_none": dict(),
+           "sgd_refr_static": dict(schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                   mask="refractory", opt="sgd", eta=0.01, static=True),
+       }.items()},
+    "c100f_bp_er_1000": dict(model="bp", dataset="cifar100f", buffer=1000, policy="random", replay="er", bp_lr=3e-4),
+    # per-class-matched buffer (K=5000 = 50/class)
+    **{f"c100{ftag}_sgd_refr_k5000": dict(model="ctx", dataset=ds, buffer=5000, policy="random",
+                                          schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                          mask="refractory", opt="sgd", eta=0.01, hidden=(512, 256), active_frac=0.10)
+       for ftag, ds in (("", "cifar100"), ("f", "cifar100f"))},
+    **{f"c100{ftag}_night_k5000": dict(model="ctx", dataset=ds, buffer=5000, policy="random",
+                                       replay="nrem", hidden=(512, 256), active_frac=0.10)
+       for ftag, ds in (("", "cifar100"), ("f", "cifar100f"))},
+    **{f"c100{ftag}_bp_er_5000": dict(model="bp", dataset=ds, buffer=5000, policy="random", replay="er", bp_lr=3e-4)
+       for ftag, ds in (("", "cifar100"), ("f", "cifar100f"))},
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -669,7 +784,90 @@ def load_cifar10_feat(n_filters=256, patch=6, stride=2, seed=7):
     return (Xtr - mu) / sd, ytr, (Xte - mu) / sd, yte
 
 
+C100_DIR = os.path.join(ROOT, "tmp", "dataset_cache", "cifar100")
+
+
+def _cifar100_raw():
+    import pickle as pk
+    import tarfile
+    with tarfile.open(os.path.join(C100_DIR, "cifar-100-python.tar.gz")) as tf:
+        def part(name):
+            d = pk.load(tf.extractfile(f"cifar-100-python/{name}"), encoding="bytes")
+            return d[b"data"], np.array(d[b"fine_labels"], dtype=np.int64)
+        Xtr, ytr = part("train")
+        Xte, yte = part("test")
+    return Xtr, ytr, Xte, yte
+
+
+def load_cifar100_gray():
+    cache = os.path.join(C100_DIR, "gray.npz")
+    if os.path.exists(cache):
+        z = np.load(cache)
+        Xtr, ytr, Xte, yte = z["Xtr"], z["ytr"], z["Xte"], z["yte"]
+    else:
+        Xtr, ytr, Xte, yte = _cifar100_raw()
+
+        def gray(X):
+            X = X.reshape(-1, 3, 1024).astype(np.float32) / 255
+            return 0.299 * X[:, 0] + 0.587 * X[:, 1] + 0.114 * X[:, 2]
+        Xtr, Xte = gray(Xtr), gray(Xte)
+        os.makedirs(C100_DIR, exist_ok=True)
+        np.savez_compressed(cache, Xtr=Xtr, ytr=ytr, Xte=Xte, yte=yte)
+    mu, sd = Xtr.mean(0), Xtr.std(0)
+    sd[sd < 1e-6] = 1.0
+    return (Xtr - mu) / sd, ytr, (Xte - mu) / sd, yte
+
+
+def load_cifar100_feat(n_filters=256, patch=6, stride=2, seed=7):
+    """Same frozen V1-like front-end as CIFAR-10, filters drawn from the CIFAR-100 train set."""
+    cache = os.path.join(C100_DIR, f"feat{n_filters}.npz")
+    if os.path.exists(cache):
+        z = np.load(cache)
+        return z["Xtr"].astype(np.float32), z["ytr"], z["Xte"].astype(np.float32), z["yte"]
+    Xtr_b, ytr, Xte_b, yte = _cifar100_raw()
+    Xtr_r = Xtr_b.reshape(-1, 3, 32, 32).astype(np.float32) / 255
+    Xte_r = Xte_b.reshape(-1, 3, 32, 32).astype(np.float32) / 255
+    g = torch.Generator().manual_seed(seed)
+    idx_img = torch.randint(0, len(Xtr_r), (n_filters,), generator=g)
+    idx_y = torch.randint(0, 32 - patch, (n_filters,), generator=g)
+    idx_x = torch.randint(0, 32 - patch, (n_filters,), generator=g)
+    W = torch.stack([torch.as_tensor(Xtr_r[i, :, y:y + patch, x:x + patch])
+                     for i, y, x in zip(idx_img.tolist(), idx_y.tolist(), idx_x.tolist())])
+    W = W - W.mean(dim=(1, 2, 3), keepdim=True)
+    W = W / (W.flatten(1).norm(dim=1).view(-1, 1, 1, 1) + 1e-8)
+
+    def encode(X):
+        out = []
+        for i in range(0, len(X), 512):
+            r = torch.nn.functional.conv2d(torch.as_tensor(X[i:i + 512]), W, stride=stride)
+            r = torch.relu(r - r.mean(dim=(2, 3), keepdim=True))
+            p = torch.nn.functional.adaptive_avg_pool2d(r, 2)
+            out.append(p.flatten(1))
+        return torch.cat(out).numpy()
+    Xtr_f, Xte_f = encode(Xtr_r), encode(Xte_r)
+    mu, sd = Xtr_f.mean(0), Xtr_f.std(0)
+    sd[sd < 1e-6] = 1.0
+    Xtr_f, Xte_f = (Xtr_f - mu) / sd, (Xte_f - mu) / sd
+    os.makedirs(C100_DIR, exist_ok=True)
+    np.savez_compressed(cache, Xtr=Xtr_f, ytr=ytr, Xte=Xte_f, yte=yte)
+    return Xtr_f.astype(np.float32), ytr, Xte_f.astype(np.float32), yte
+
+
+def n_classes(cfg):
+    return 100 if str(cfg.get("dataset", "")).startswith("cifar100") else 10
+
+
+def split_tasks(cfg):
+    return TASKS100 if n_classes(cfg) == 100 else TASKS
+
+
 def load_data(cfg):
+    if cfg.get("dataset") == "cifar100":
+        X, y, Xe, ye = load_cifar100_gray()
+        return X, y, Xe, ye, (32, 32)
+    if cfg.get("dataset") == "cifar100f":
+        X, y, Xe, ye = load_cifar100_feat()
+        return X, y, Xe, ye, (32, 32)
     if cfg.get("dataset") == "cifar":
         X, y, Xe, ye = load_cifar10_gray()
         return X, y, Xe, ye, (32, 32)
@@ -804,12 +1002,12 @@ class KWTA(torch.nn.Module):
         return x * (x >= thr).float()
 
 
-def make_bp(seed, hidden, n_in=784, lr=1e-3, kwta=None):
+def make_bp(seed, hidden, n_in=784, lr=1e-3, kwta=None, n_out=10):
     torch.manual_seed(seed)
     act = (lambda: KWTA(kwta)) if kwta else torch.nn.ReLU
     net = torch.nn.Sequential(torch.nn.Linear(n_in, hidden[0]), act(),
                               torch.nn.Linear(hidden[0], hidden[1]), act(),
-                              torch.nn.Linear(hidden[1], 10))
+                              torch.nn.Linear(hidden[1], n_out))
     return net, torch.optim.Adam(net.parameters(), lr=lr, weight_decay=1e-3)
 
 
@@ -853,19 +1051,20 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
     rem_gen, rem_neg = cfg.get("rem_gen", 0), cfg.get("rem_neg", 0.0)
     decoder = bool(cfg.get("decoder", False) or rem_gen or rem_neg)
     Xtr, ytr, Xte, yte, ishape = load_data(cfg)
+    NC = n_classes(cfg)
     seed_everything(seed)
     g = torch.Generator().manual_seed(seed)
     hidden = RM.WIDE
     hidden = tuple(cfg.get("hidden", RM.WIDE))
     if model == "bp":
         net, opt = make_bp(seed, hidden, Xtr.shape[1], lr=cfg.get("bp_lr", 1e-3),
-                           kwta=cfg.get("bp_kwta"))
+                           kwta=cfg.get("bp_kwta"), n_out=NC)
         if cfg.get("bp_conn"):
             # 15F: where does BP+ER's residual feature-regime lead come from?  Give the BP net
             # the SAME sparse wiring as the local learner: masks drawn by the same CortexNet
             # generator (distance-dependent on the same sheets, same seed), hidden layers only,
             # dense readout -- an equal-connectivity control.
-            ref = CortexNet([Xtr.shape[1], *hidden, 10], seed=seed, input_shape=ishape,
+            ref = CortexNet([Xtr.shape[1], *hidden, NC], seed=seed, input_shape=ishape,
                             conn_density=cfg["bp_conn"], conn_mode="dist")
             lins = [mm for mm in net if isinstance(mm, torch.nn.Linear)]
             net.wmasks = [ref.mask[l] for l in range(1, len(lins) + 1)]
@@ -875,13 +1074,13 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
                         lin.weight.mul_(m)
     else:
         front = make_front(cfg, seed)
-        net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, 10], seed=seed, input_shape=None if front else ishape,
+        net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, NC], seed=seed, input_shape=None if front else ishape,
                         decoder=decoder, rem_neg=rem_neg, **dict(V7, active_frac=cfg.get("active_frac", V7["active_frac"]),
                                                                  conn_density=cfg.get("conn_density", V7["conn_density"])))
         net.front = front
     buf = Buffer(K, policy, g)
-    tasks = [tuple(range(10))] if static else TASKS
-    onehot = lambda y: torch.nn.functional.one_hot(torch.as_tensor(y), 10).float()
+    tasks = [tuple(range(NC))] if static else split_tasks(cfg)
+    onehot = lambda y: torch.nn.functional.one_hot(torch.as_tensor(y), NC).float()
     acc_matrix = np.full((len(tasks), len(tasks)), np.nan)
     t0 = time.time()
     for ti, classes in enumerate(tasks):
@@ -1133,10 +1332,11 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     S = [None] + [torch.zeros(s) for s in hidden]  # unit-level sleep pressure: use since last consolidation
     gate_log = []
     Xtr, ytr, Xte, yte, ishape = load_data(cfg)
+    NC = n_classes(cfg)
     seed_everything(seed)
     g = torch.Generator().manual_seed(seed)
     front = make_front(cfg, seed)
-    net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, 10], seed=seed,
+    net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, NC], seed=seed,
                     input_shape=None if front else ishape,
                     **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"]),
                            opt=cfg.get("opt", V7.get("opt", "adam"))))
@@ -1146,8 +1346,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     if sp:
         net.regrow = sp_rho
     buf = Buffer(K, policy, g)
-    tasks = [tuple(range(10))] if static else TASKS
-    onehot = lambda y: torch.nn.functional.one_hot(torch.as_tensor(y), 10).float()
+    tasks = [tuple(range(NC))] if static else split_tasks(cfg)
+    onehot = lambda y: torch.nn.functional.one_hot(torch.as_tensor(y), NC).float()
     use = [None] + [torch.full((s,), 0.5) for s in hidden]       # recent-use trace per hidden unit
     long_use = [None] + [torch.full((s,), 0.5) for s in hidden]  # long-term use trace
     acc_matrix = np.full((len(tasks), len(tasks)), np.nan)
@@ -1319,11 +1519,11 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                             Xr = Xr + replay_noise * torch.randn(Xr.shape, generator=g)
                         # synapse masks: allowed iff pre asleep or post asleep
                         pre_awake = [torch.ones(net.sizes[0])] + [awake[l] for l in range(1, net.L)]  # input is always "awake"
-                        post_awake = [None] + [awake[l] for l in range(1, net.L)] + [torch.ones(10)]
+                        post_awake = [None] + [awake[l] for l in range(1, net.L)] + [torch.ones(NC)]
                         syn, bias = [None], [None]
                         for l in range(1, net.L + 1):
                             if l == net.L and readout == "free":
-                                syn.append(torch.ones(10, hidden[-1])); bias.append(torch.ones(10))
+                                syn.append(torch.ones(NC, hidden[-1])); bias.append(torch.ones(NC))
                             else:
                                 allowed = 1.0 - post_awake[l][:, None] * pre_awake[l - 1][None, :]
                                 syn.append(allowed); bias.append(1.0 - post_awake[l])
@@ -1344,7 +1544,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                             mirror_syn, mirror_bias = [None], [None]
                             for l in range(1, net.L + 1):
                                 if l == net.L:
-                                    mirror_syn.append(torch.ones(10, hidden[-1])); mirror_bias.append(torch.ones(10))
+                                    mirror_syn.append(torch.ones(NC, hidden[-1])); mirror_bias.append(torch.ones(NC))
                                 else:
                                     pre_r = torch.ones(net.sizes[0]) if l == 1 else r_act[l - 1]
                                     forbidden = r_act[l][:, None] * pre_r[None, :]

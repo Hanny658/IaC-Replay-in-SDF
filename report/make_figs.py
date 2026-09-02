@@ -21,7 +21,7 @@ C = {"refr": "#0072B2", "none": "#E69F00", "night": "#009E73", "press": "#CC79A7
 
 def stat(cfg):
     accs, reps = [], []
-    for s in range(3):
+    for s in range(6):
         p = os.path.join(PARTS, f"{cfg}_s{s}.pkl")
         if os.path.exists(p):
             r = pickle.load(open(p, "rb"))
@@ -36,40 +36,39 @@ def series(cfgs):
     return [o[2] for o in out], [o[0] for o in out], [o[1] for o in out]
 
 
-# ---------------- Fig: replay timing / cost (accuracy vs replay events) ----------------
+# ---------------- Fig: replay timing (s10 record substrate, stateless SGD) ----------------
 fig, ax = plt.subplots(figsize=(3.4, 2.6))
-x, y, e = series(["g9a_w512s5_cad16", "g9a_w512s5_cad8", "g9a_w512s5_cad4", "g9a_w512s5_cad2"])
-x, y, e = x + [18760], y + [stat("g8_w512s5_loc_refr")[0]], e + [stat("g8_w512s5_loc_refr")[1]]
-ax.errorbar(x, y, e, marker="o", ms=3.5, lw=1.2, color=C["none"], label="clocked, even (cad $c$)")
-x, y, e = series(["g9a_w512s5_burst4_32", "g9a_w512s5_burst8_64", "g9a_w512s5_burst16_128", "g9a_w512s5_burst32_256"])
-ax.errorbar(x, y, e, marker="s", ms=3.5, lw=1.2, color=C["burst"], label="clocked bursts")
-x, y, e = series(["g9a_w512s5_press16", "g9a_w512s5_press08", "g9a_w512s5_press04", "g9a_w512s5_press02"])
-ax.errorbar(x, y, e, marker="^", ms=3.5, lw=1.2, color=C["press"], label="pressure, even")
-x, y, e = series(["g9a_w512s5_pburst8_t32", "g9a_w512s5_pburst16_t64"])
-ax.errorbar(x, y, e, marker="*", ms=7, lw=1.2, color=C["refr"], label="pressure bursts")
-x, y, e = series(["g9a_w512s5_surp05", "g9a_w512s5_surp03", "g9a_w512s5_sburst8_03"])
-ax.errorbar(x, y, e, marker="x", ms=4, lw=1.2, color=C["surp"], label="surprise-triggered")
+PTS = [  # label, cfg, marker, color
+    ("even trickle (cad 8)", "g17_sgd_cad8_br16_s10", "o", C["none"]),
+    ("clocked burst 16/128", "g17_sgd_burst16_128_s10", "s", C["burst"]),
+    ("pressure bursts", "g17_sgd_pburst16_s10", "*", C["refr"]),
+    ("surprise bursts", "g17_sgd_sburst16_s10", "x", C["surp"]),
+    ("every batch (default)", "g16_sgd_refr_s10_w512", "D", C["refr"]),
+]
+for lab, cfg, mk, col in PTS:
+    m, e, r = stat(cfg)
+    ax.errorbar(r if r == r else 18760, m, e, marker=mk, ms=6 if mk == "*" else 4,
+                lw=0, elinewidth=1.0, capsize=2, color=col, label=lab)
 ax.axhline(stat("ctx_nrem_rand_1000")[0], color=C["night"], lw=1, ls="--")
-ax.text(220, stat("ctx_nrem_rand_1000")[0] + 0.8, "offline night (480 batches)", color=C["night"], fontsize=7)
+ax.text(1500, stat("ctx_nrem_rand_1000")[0] + 0.5, "offline night (480 batches)", color=C["night"], fontsize=7)
 ax.set_xscale("log"); ax.set_xlabel("replay batches during wake"); ax.set_ylabel("final accuracy (%)")
-ax.set_ylim(15, 95); ax.legend(fontsize=6.5, loc="lower right")
+ax.legend(fontsize=6.3, loc="lower right")
 fig.savefig(os.path.join(FIGS, "fig_timing.pdf")); plt.close(fig)
 
-# ---------------- Fig: replay batch size (isolation stabilises micro-batches) ----------------
+# ---------------- Fig: replay batch size (s10 record substrate, stateless SGD) ----------------
 fig, ax = plt.subplots(figsize=(3.4, 2.6))
-bs = [1, 2, 4, 8, 16, 32, 64, 256]
-cfgs = ["g9a_w512s5_br1", "g9a_w512s5_br2", "g9a_w512s5_br4", "g9a_w512s5_br8",
-        "g9a_w512s5_br16", "g9a_w512s5_br32", "g9a_w512s5_br64", "g8_w512s5_loc_refr"]
+bs = [4, 8, 16, 64, 256]
+cfgs = ["g17_sgd_br4_s10", "g17_sgd_br8_s10", "g16_sgd_refr_s10_w512", "g17_sgd_br64_s10", "g17_sgd_br256_s10"]
 _, y, e = series(cfgs)
 ax.errorbar(bs, y, e, marker="o", ms=3.5, lw=1.2, color=C["refr"], label="refractory local sleep")
-_, y, e = series(["g9a_w512s5_none_br8", "g9a_w512s5_none_br16", "g8_w512s5_loc_none"])
-ax.errorbar([8, 16, 256], y, e, marker="s", ms=3.5, lw=1.2, color=C["none"], label="unmasked interleaved ER")
-_, y, e = series(["g9a_w512s5_silent_br16", "g8_w512s5_loc_silent"])
-ax.errorbar([16, 256], y, e, marker="^", ms=3.5, lw=1.2, color=C["grey"], label="silent-mask local sleep")
-_, y, e = series(["ctx_nrem_rand_1000_nb16", "ctx_nrem_rand_1000_nb64", "ctx_nrem_rand_1000_w512"])
-ax.errorbar([16, 64, 256], y, e, marker="D", ms=3.5, lw=1.2, color=C["night"], label="offline night")
+m, e1, _ = stat("g17_sgd_none_s10")
+ax.errorbar([16], [m], [e1], marker="s", ms=4, lw=0, elinewidth=1.0, capsize=2, color=C["none"], label="unmasked interleaved (batch 16)")
+m, e1, _ = stat("g16_sgd_silent_s10_w512")
+ax.errorbar([16], [m], [e1], marker="^", ms=4, lw=0, elinewidth=1.0, capsize=2, color=C["grey"], label="silent mask (batch 16)")
+_, y, e = series(["g17_night_nb16_s10", "g17_night_s10"])
+ax.errorbar([16, 256], y, e, marker="D", ms=3.5, lw=1.2, color=C["night"], label="offline night")
 ax.set_xscale("log", base=2); ax.set_xlabel("replay batch size"); ax.set_ylabel("final accuracy (%)")
-ax.set_ylim(78, 93); ax.legend(fontsize=6.5, loc="lower right")
+ax.legend(fontsize=6.3, loc="lower right")
 fig.savefig(os.path.join(FIGS, "fig_batch.pdf")); plt.close(fig)
 
 # ---------------- Fig: rotation price/gain and the novelty gate ----------------
@@ -133,38 +132,38 @@ def stat6(cfg):
     return 100 * np.mean(accs), 100 * (np.std(accs, ddof=1) if len(accs) > 1 else 0.0)
 
 
-FRONTIER = [  # label, seq cfg, static cfg, non-dominated, annotation offset
-    ("silent", "g12_sgd_silent_w512s5", "static_g12_sgd_silent_w512s5", True, (5, -2)),
-    ("util $q{=}.25$", "g15_sgd_util25_w512s5", "static_g15_sgd_util25_w512s5", True, (5, -2)),
-    ("per-batch gate", "g12_sgd_prog05_w512s5", "static_g12_sgd_prog05_w512s5", False, (5, -9)),
-    ("util $q{=}.10$", "g15_sgd_util10_w512s5", "static_g15_sgd_util10_w512s5", False, (-14, -11)),
-    ("masked Adam", "g9a_w512s5_br16", "static_loc16_refractory_br16_w512s5", False, (5, -2)),
-    ("bout gate", "g13_sgd_block2048_w512s5", "static_g13_sgd_block2048_w512s5", True, (-24, 6)),
-    ("anchor$+$bout", "g15_sgd_anchorblock_w512s5", "static_g15_sgd_anchorblock_w512s5", True, (-56, -2)),
-    ("always-on", "g12_sgd_refr_w512s5", "static_g12_sgd_refr_w512s5", False, (-40, -11)),
-    ("$+$anchor", "g15_sgd_anchor_l3e4m3e4_w512s5", "static_g15_sgd_anchor_l3e4m3e4_w512s5", True, (6, -3)),
+FRONTIER = [  # s10 record substrate: label, seq cfg, static cfg, non-dominated, offset
+    ("always-on", "g16_sgd_refr_s10_w512", "g16_sgd_refr_s10_w512_static", True, (5, -3)),
+    ("bout gate", "g16_sgd_block2048_s10_w512", "g16_sgd_block2048_s10_w512_static", True, (-40, 5)),
+    ("per-batch gate", "g17_sgd_prog05_s10", "static_g17_sgd_prog05_s10", True, (-30, 6)),
+    ("silent", "g16_sgd_silent_s10_w512", "g16_sgd_silent_s10_w512_static", True, (-8, 6)),
+    ("$-$isolation", "g17_sgd_none_s10", "static_g17_sgd_none_s10", True, (5, -3)),
+    ("$+$anchor", "g17_sgd_anchor_s10", "static_g17_sgd_anchor_s10", False, (5, -9)),
+    ("masked Adam", "g17_adam_refr_s10", "static_g17_adam_refr_s10", False, (-20, -12)),
+    ("Adam, leak", "g17_adam_leak_s10", "static_g17_adam_leak_s10", False, (5, -3)),
+]
+HIST5 = [  # the historical 5% family (faded)
+    ("g12_sgd_refr_w512s5", "static_g12_sgd_refr_w512s5"),
+    ("g13_sgd_block2048_w512s5", "static_g13_sgd_block2048_w512s5"),
+    ("g12_sgd_silent_w512s5", "static_g12_sgd_silent_w512s5"),
+    ("g12_sgd_prog05_w512s5", "static_g12_sgd_prog05_w512s5"),
 ]
 fig, ax = plt.subplots(figsize=(3.8, 2.9))
+for cs, ct in HIST5:
+    (xm, _), (ym, _) = stat6(cs), stat6(ct)
+    ax.plot(xm, ym, marker="o", ms=3, color=C["grey"], alpha=0.45, lw=0)
+ax.annotate("historical $5\%$ family", (89.2, 93.6), fontsize=6.5, color=C["grey"], alpha=0.8)
 front = []
 for name, cs, ct, onf, off in FRONTIER:
     (xm, xs), (ym, ys) = stat6(cs), stat6(ct)
     ax.errorbar(xm, ym, xerr=xs, yerr=ys, marker="o", ms=4,
-                color=C["refr"] if onf else C["grey"], lw=0, elinewidth=0.8, capsize=1.5)
+                color=C["refr"] if onf else C["press"], lw=0, elinewidth=0.8, capsize=1.5)
     ax.annotate(name, (xm, ym), textcoords="offset points", xytext=off, fontsize=7,
-                color=C["refr"] if onf else C["grey"])
+                color=C["refr"] if onf else C["press"])
     if onf:
         front.append((xm, ym))
 front.sort()
 ax.plot([p[0] for p in front], [p[1] for p in front], color=C["refr"], lw=0.8, alpha=0.45, zorder=0)
-DIAL = [  # phase 16: the same machinery with the k-WTA fraction relaxed (sparsity dial)
-    ("refr $10\%$", "g16_sgd_refr_s10_w512", "g16_sgd_refr_s10_w512_static", (6, -3)),
-    ("refr $15\%$", "g16_sgd_refr_s15_w512", "g16_sgd_refr_s15_w512_static", (-48, 4)),
-    ("silent $10\%$", "g16_sgd_silent_s10_w512", "g16_sgd_silent_s10_w512_static", (4, -12)),
-]
-for name, cs, ct, off in DIAL:
-    (xm, xs), (ym, ys) = stat6(cs), stat6(ct)
-    ax.errorbar(xm, ym, xerr=xs, yerr=ys, marker="D", ms=4, color=C["surp"], lw=0, elinewidth=0.8, capsize=1.5)
-    ax.annotate(name, (xm, ym), textcoords="offset points", xytext=off, fontsize=7, color=C["surp"])
 ax.set_xlabel("sequential (split-MNIST) accuracy (%)")
 ax.set_ylabel("i.i.d. (static) accuracy (%)")
 fig.savefig(os.path.join(FIGS, "fig_frontier.pdf")); plt.close(fig)
