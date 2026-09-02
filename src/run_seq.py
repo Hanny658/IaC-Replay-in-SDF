@@ -516,6 +516,13 @@ CONFIGS = {
     "cfeat_sgd_refr_e005_static": dict(model="ctx", dataset="cifarf", buffer=1000, policy="random", schedule="local",
                                        batch_wake=16, cadence=1, batch_replay=16, mask="refractory", opt="sgd", eta=0.005,
                                        hidden=(512, 256), active_frac=0.05, static=True),
+    # ---- phase 15F: decompose the feature-regime boundary -- give BP+ER the local net's
+    # width, then its 30% distance-dependent sparse wiring, at both candidate lrs
+    **{f"cfeat_bp_er_w512{tag}_lr{lt}": dict(model="bp", dataset="cifarf", buffer=1000, policy="random",
+                                             replay="er", hidden=(512, 256), bp_lr=lr, **kw)
+       for tag, kw in (("", {}), ("_d30", dict(bp_conn=0.30)),
+                       ("_d30k5", dict(bp_conn=0.30, bp_kwta=0.05)))
+       for lt, lr in (("3e4", 3e-4), ("1e3", 1e-3))},
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -731,10 +738,26 @@ class Buffer:
 
 
 # ------------------------------------------------------------------ models
-def make_bp(seed, hidden, n_in=784, lr=1e-3):
+class KWTA(torch.nn.Module):
+    """15F: the local net's activation sparsity, transplanted -- ReLU then keep the top
+    `frac` fraction of units per sample."""
+
+    def __init__(self, frac):
+        super().__init__()
+        self.frac = frac
+
+    def forward(self, x):
+        x = torch.relu(x)
+        k = max(1, int(round(self.frac * x.shape[1])))
+        thr = x.topk(k, dim=1).values[:, -1:]
+        return x * (x >= thr).float()
+
+
+def make_bp(seed, hidden, n_in=784, lr=1e-3, kwta=None):
     torch.manual_seed(seed)
-    net = torch.nn.Sequential(torch.nn.Linear(n_in, hidden[0]), torch.nn.ReLU(),
-                              torch.nn.Linear(hidden[0], hidden[1]), torch.nn.ReLU(),
+    act = (lambda: KWTA(kwta)) if kwta else torch.nn.ReLU
+    net = torch.nn.Sequential(torch.nn.Linear(n_in, hidden[0]), act(),
+                              torch.nn.Linear(hidden[0], hidden[1]), act(),
                               torch.nn.Linear(hidden[1], 10))
     return net, torch.optim.Adam(net.parameters(), lr=lr, weight_decay=1e-3)
 
@@ -745,6 +768,12 @@ def bp_step(net, opt, Xb, Yb):
     loss = ((out - Yb) ** 2).sum(1).mean()
     loss.backward()
     opt.step()
+    wm = getattr(net, "wmasks", None)
+    if wm is not None:  # 15F: sparse wiring is structural -- re-zeroed after every step
+        with torch.no_grad():
+            for lin, m in zip([mm for mm in net if isinstance(mm, torch.nn.Linear)], wm):
+                if m is not None:
+                    lin.weight.mul_(m)
     return ((out.detach() - Yb) ** 2).sum(1)  # per-sample surprise
 
 
@@ -778,7 +807,21 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
     hidden = RM.WIDE
     hidden = tuple(cfg.get("hidden", RM.WIDE))
     if model == "bp":
-        net, opt = make_bp(seed, hidden, Xtr.shape[1], lr=cfg.get("bp_lr", 1e-3))
+        net, opt = make_bp(seed, hidden, Xtr.shape[1], lr=cfg.get("bp_lr", 1e-3),
+                           kwta=cfg.get("bp_kwta"))
+        if cfg.get("bp_conn"):
+            # 15F: where does BP+ER's residual feature-regime lead come from?  Give the BP net
+            # the SAME sparse wiring as the local learner: masks drawn by the same CortexNet
+            # generator (distance-dependent on the same sheets, same seed), hidden layers only,
+            # dense readout -- an equal-connectivity control.
+            ref = CortexNet([Xtr.shape[1], *hidden, 10], seed=seed, input_shape=ishape,
+                            conn_density=cfg["bp_conn"], conn_mode="dist")
+            lins = [mm for mm in net if isinstance(mm, torch.nn.Linear)]
+            net.wmasks = [ref.mask[l] for l in range(1, len(lins) + 1)]
+            with torch.no_grad():
+                for lin, m in zip(lins, net.wmasks):
+                    if m is not None:
+                        lin.weight.mul_(m)
     else:
         front = make_front(cfg, seed)
         net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, 10], seed=seed, input_shape=None if front else ishape,

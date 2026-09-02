@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: b260108a-3c8a-4668-bb0c-63a09e66c838
-  modified: 2026-09-02T01:13:38.057Z
+  modified: 2026-09-02T01:28:17.758Z
 ---
 
 Overnight autonomous exploration 2026-09-01 -> 09-02 (~190 runs, all 3 seeds unless noted,
@@ -43,6 +43,15 @@ cortex.local_update, ticks on waking steps only so replay exactness untouched)
   13b's localisation of the price was right; exempting those coalitions pays proportionally.
 ## Phase 15D: anchor x bout combo: 92.3 +-0.3 / 93.8 +-0.5 -- between the parents, dominates
 neither; anchor and gate do not compose additively.
+
+## Phase 15F: boundary decomposition (cfeat, BP+ER given the local substrate piecewise)
+Ladder at each cell's better lr: dense narrow 43.3 -> wide dense 44.5 +-0.4 (width HELPS BP)
+-> +30% dist wiring (same CortexNet mask generator, same seed; `bp_conn`) 43.9 +-0.7 (wiring
+costs 0.6) -> +5% k-WTA (`bp_kwta`, KWTA module) 39.5 +-0.6 = BELOW local learner 40.6 +-1.0.
+THE BOUNDARY IS k-WTA ACTIVATION SPARSITY, NOT BACKPROP'S CREDIT ASSIGNMENT -- on the shared
+substrate the local rule gives nothing away.  Manuscript: transfer subsection extended with
+the decomposition; limits attribution updated; FW(i) -> "buy back kWTA's feature cost without
+losing the isolation channel it powers".
 
 ## Phase 15E: energy re-measure on the new default (scripts/p15_spike.py, seed 0, v10 protocol)
 - Bout-gate system: T_s=8 -> 93.5% @ 118 nJ (1/20.8 of dense rate 2461 nJ, 1/4.4 of

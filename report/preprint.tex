@@ -552,9 +552,18 @@ its own best learning rate gains little ($43.3\pm1.0$ at $3{\cdot}10^{-4}$). Wit
 tuned the honest gap is $2.7$ points, not $5.6$: most of the boundary was the local learner's
 optimiser, not its learning rule. On raw pixels the stateless gain does not appear
 ($27.2\pm1.4$ vs.\ $27.1\pm1.7$ for masked Adam): statelessness pays in the converged and
-feature regimes, not in the underfit one. The advantage over \emph{other local schedules}
-(nights, unmasked ER) remains robust across all three input regimes, and the residual gap to
-backpropagation-with-replay on features stands as an honest boundary.
+feature regimes, not in the underfit one.
+
+The residual $2.7$ points then decompose entirely into the \emph{substrate}, not the learning
+rule. Transplanting the local network's ingredients into the BP net one at a time (each cell at
+its better of two learning rates): its width \emph{helps} BP+ER ($44.5\pm0.4$ for a dense
+$512$--$256$ net), its $30\%$ distance-dependent wiring --- drawn by the same generator on the
+same sheets --- costs only $0.6$ ($43.9\pm0.7$), but its $5\%$ \kwta{} costs $4.4$ points
+($39.5\pm0.6$), leaving backprop-with-replay \emph{at or below} the local learner on the
+identical substrate ($40.6\pm1.0$). What separates the two systems on feature inputs is dense
+activation, not backpropagation's credit assignment: on the substrate this project commits to,
+the local rule gives nothing away. The advantage over \emph{other local schedules} (nights,
+unmasked ER) remains robust across all three input regimes.
 
 \subsection{Small buffers: what the night still buys}
 At $K{=}200$ the night appeared to keep a $\sim$2.6-point edge in our earlier phases; the final
@@ -875,7 +884,8 @@ under chronic underfitting) may bear on why local sleep in vivo both impairs beh
 \paragraph{Honest limits.}
 All results are at MLP scale on MNIST/CIFAR variants with three seeds (six on the headline
 rows); BP+ER keeps a $2.7$-point lead on feature-based CIFAR with both sides at their best
-learning rates, bounding the regime of our headline comparison; the progress
+learning rates --- a lead the substrate decomposition attributes to dense activation rather
+than to backpropagation itself; the progress
 gate keeps a $0.7$-point static residue under Adam, must be committed to minimum-duration
 bouts under the stateless optimiser, and even then leaves a $1.8$-point static gap to
 rotation-free isolation (Section~\ref{sec:ablation}); and the novelty claims rest on our own literature
@@ -887,9 +897,9 @@ their combination into concurrent, exactly isolated consolidation.
 \section{Future Work}
 \label{sec:future}
 
-(i) Explaining why backpropagation with replay overtakes the local learner specifically on
-feature representations (dense connectivity, per-synapse adaptivity, or the learning rule
-itself); (ii) the bout gate's residual static price ($94.2$ vs.\ $96.0$ rotation-free): the OFF-side
+(i) Whether \kwta{}'s feature-regime cost ($4.4$ points for BP and, by implication, for us)
+can be bought back --- milder or annealed sparsity, learned thresholds --- without losing the
+exact isolation channel that \kwta{} powers; (ii) the bout gate's residual static price ($94.2$ vs.\ $96.0$ rotation-free): the OFF-side
 refractory, utility exemption and synaptic anchoring are now all ruled out as routes past it
 (Section~\ref{sec:ablation}), leaving mastery-annealed rotation depth untried;
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
