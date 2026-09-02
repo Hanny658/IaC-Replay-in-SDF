@@ -60,7 +60,10 @@ offline nights degrade sharply at the same sizes. The i.i.d.\ cost of rotation (
 points) is eliminated, under masked Adam, by the relative-novelty gate on learnable streams ($95.0\%$ vs.\ $95.0\%$
 without rotation); under a stateless optimiser the same gate must instead be committed to
 sleep-bout-like episodes with a minimum on-duration, which then weakly dominate always-on
-rotation ($92.0/94.2$ vs.\ $92.0/93.3$ over six seeds). The price reverses into a $+2.5$ to $+6.5$ point \emph{gain} on harder data
+rotation ($92.0/94.2$ vs.\ $92.0/93.3$ over six seeds). The substrate's $5\%$ activity
+fraction, an early inherited choice, turns out to tax both regimes: relaxing it to
+$10$--$15\%$ improves both axes at once ($92.7/94.7$ on split-MNIST) and shrinks
+at source the price the gate exists to refund. The price reverses into a $+2.5$ to $+6.5$ point \emph{gain} on harder data
 (split CIFAR-10), where the full ordering of methods transfers. We further show that
 surprise-triggered waking replay fails at any volume, that the trigger must be homeostatic, and
 that the residual advantage of offline nights is confined to very small episodic buffers on
@@ -548,19 +551,19 @@ $35.6\pm1.3$ vs.\ $31.7\pm3.6$), and BP+ER reaches $42.6\pm0.5$ --- the reverse 
 raw-pixel ordering. In our first report this read as a $5.6$-point regime boundary; a
 two-sided fairness pass revises it. The stateless optimiser transfers to the feature regime
 ($40.6\pm1.0$ sequential at $\eta{=}0.01$, six seeds; static $38.6\pm1.4$), while BP+ER at
-its own best learning rate gains little ($43.3\pm1.0$ at $3{\cdot}10^{-4}$). With both sides
-tuned the honest gap is $2.7$ points, not $5.6$: most of the boundary was the local learner's
-optimiser, not its learning rule. On raw pixels the stateless gain does not appear
+its own best learning rate gains little ($43.6\pm1.1$ at $3{\cdot}10^{-4}$, six seeds). With
+both sides tuned the honest gap is $3.0$ points, not $5.6$: most of the boundary was the local
+learner's optimiser, not its learning rule. On raw pixels the stateless gain does not appear
 ($27.2\pm1.4$ vs.\ $27.1\pm1.7$ for masked Adam): statelessness pays in the converged and
 feature regimes, not in the underfit one.
 
 The residual $2.7$ points then decompose entirely into the \emph{substrate}, not the learning
 rule. Transplanting the local network's ingredients into the BP net one at a time (each cell at
-its better of two learning rates): its width \emph{helps} BP+ER ($44.5\pm0.4$ for a dense
+its better of two learning rates): its width \emph{helps} BP+ER ($44.8\pm0.9$ for a dense
 $512$--$256$ net), its $30\%$ distance-dependent wiring --- drawn by the same generator on the
-same sheets --- costs only $0.6$ ($43.9\pm0.7$), but its $5\%$ \kwta{} costs $4.4$ points
-($39.5\pm0.6$), leaving backprop-with-replay \emph{at or below} the local learner on the
-identical substrate ($40.6\pm1.0$). What separates the two systems on feature inputs is dense
+same sheets --- costs $1.2$ ($43.6\pm1.0$), and its $5\%$ \kwta{} costs another $3.9$ points
+($39.7\pm0.9$), leaving backprop-with-replay \emph{at or below} the local learner on the
+identical substrate ($40.6\pm1.0$; all cells six seeds). What separates the two systems on feature inputs is dense
 activation, not backpropagation's credit assignment: on the substrate this project commits to,
 the local rule gives nothing away. The advantage over \emph{other local schedules} (nights,
 unmasked ER) remains robust across all three input regimes.
@@ -788,12 +791,44 @@ resulting operating frontier.
 \centering
 \includegraphics[width=.6\linewidth]{figs/fig_frontier.pdf}
 \caption{\textbf{The operating frontier} under the stateless optimiser: split-MNIST
-sequential accuracy against i.i.d.\ static accuracy (six seeds on the bout-gate and always-on
-points, three elsewhere). Blue: non-dominated configurations; grey: dominated ones. No single
-configuration wins both axes; the bout-committed gate is the sequential-side default, silent
-isolation the static-side one.}
+sequential accuracy against i.i.d.\ static accuracy (six seeds on the bout-gate, always-on and
+dial points, three elsewhere). Blue: non-dominated configurations at the historical $5\%$
+activity fraction; grey: dominated ones; orange diamonds: the same machinery with the
+\kwta{} fraction relaxed to $10$--$15\%$ (Section~\ref{sec:dial}), which shifts the whole
+frontier outward. Within a fraction, no single configuration wins both axes.}
 \label{fig:frontier}
 \end{figure}
+
+\subsection{The sparsity dial}
+\label{sec:dial}
+The substrate's $5\%$ \kwta{} fraction was fixed in an early phase and inherited by every
+experiment above; the decomposition just given makes it suspect --- if $5\%$ \kwta{} taxes
+BP by four points on features, it presumably taxes our own learner too. It does, on both
+regimes, and the tax can be bought back almost for free. On feature CIFAR-10, relaxing the
+fraction improves \emph{both} axes monotonically: sequential $40.6\to42.8\pm0.3$ and static
+$38.6\to45.6\pm0.5$ from $5$ to $25\%$, with forgetting slightly \emph{reduced}; the BP
+control traces the same curve ($39.7\to41.2\to43.6$), with the local learner
+$\approx\!1.1$ points ahead at every matched level. On MNIST the sequential optimum sits at
+$10\%$: always-on rotation reaches $\mathbf{92.7\pm0.3}$ sequential at $94.7\pm0.3$ static
+(six seeds) --- dominating every $5\%$ cell of Table~\ref{tab:ablation}, bout gate and
+anchor included --- while $15\%$ trades to $92.5\pm0.3/95.1\pm0.3$ and $25\%$ plateaus
+($92.5\pm0.1/95.1\pm0.2$).
+
+Three controls sharpen the reading. First, the no-buffer ceiling itself rises with the
+fraction ($95.1\to95.8\to95.9$), so rotation's static price \emph{at matched sparsity}
+shrinks from $1.8$ to $0.7$--$1.0$ points --- and the gate's raison d'\^etre shrinks with it:
+at $15\%$, always-on rotation no longer trails the bout-gated system. Second, rotation-free
+silent isolation gains nothing from the dial ($89.0\to89.3\to88.7$): the dial helps
+specifically the \emph{rotating} family, which at $5\%$ was starved of representational
+room. Third, asymmetric schedules (a mild input-facing layer above a sparse deep layer) fail
+--- sequential parity with uniform relaxation but a $3$--$4$-point static deficit: the tax is
+levied at every layer. The dial is free elsewhere: synaptic operations rise only $3$--$5\%$,
+and spiking inference stays input-dominated ($94.0\%$ at $120$\,nJ, $T_s{=}8$, at $15\%$;
+monotone in $T_s$ as before). We keep $5\%$ as the substrate of record for
+Tables~\ref{tab:ablation}--\ref{tab:substrate} --- every mechanism comparison above is
+internally matched, and the orderings we spot-checked at $10$--$15\%$ are preserved --- but
+the dial, not the gate, is the cheapest cure for rotation's static price
+(Figure~\ref{fig:frontier}, orange).
 
 \subsection{The price of the substrate}
 
@@ -883,9 +918,10 @@ under chronic underfitting) may bear on why local sleep in vivo both impairs beh
 
 \paragraph{Honest limits.}
 All results are at MLP scale on MNIST/CIFAR variants with three seeds (six on the headline
-rows); BP+ER keeps a $2.7$-point lead on feature-based CIFAR with both sides at their best
+rows); BP+ER keeps a $3.0$-point lead on feature-based CIFAR with both sides at their best
 learning rates --- a lead the substrate decomposition attributes to dense activation rather
-than to backpropagation itself; the progress
+than to backpropagation itself; the mechanism tables use the historical $5\%$ activity
+fraction, which the sparsity dial (Section~\ref{sec:dial}) shows is not the optimum; the progress
 gate keeps a $0.7$-point static residue under Adam, must be committed to minimum-duration
 bouts under the stateless optimiser, and even then leaves a $1.8$-point static gap to
 rotation-free isolation (Section~\ref{sec:ablation}); and the novelty claims rest on our own literature
@@ -897,9 +933,8 @@ their combination into concurrent, exactly isolated consolidation.
 \section{Future Work}
 \label{sec:future}
 
-(i) Whether \kwta{}'s feature-regime cost ($4.4$ points for BP and, by implication, for us)
-can be bought back --- milder or annealed sparsity, learned thresholds --- without losing the
-exact isolation channel that \kwta{} powers; (ii) the bout gate's residual static price ($94.2$ vs.\ $96.0$ rotation-free): the OFF-side
+(i) Re-baselining the full mechanism suite on the $10\%$ substrate the sparsity dial
+identifies (the tables above use the historical $5\%$); (ii) the bout gate's residual static price ($94.2$ vs.\ $96.0$ rotation-free): the OFF-side
 refractory, utility exemption and synaptic anchoring are now all ruled out as routes past it
 (Section~\ref{sec:ablation}), leaving mastery-annealed rotation depth untried;
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;

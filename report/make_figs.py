@@ -156,6 +156,15 @@ for name, cs, ct, onf, off in FRONTIER:
         front.append((xm, ym))
 front.sort()
 ax.plot([p[0] for p in front], [p[1] for p in front], color=C["refr"], lw=0.8, alpha=0.45, zorder=0)
+DIAL = [  # phase 16: the same machinery with the k-WTA fraction relaxed (sparsity dial)
+    ("refr $10\%$", "g16_sgd_refr_s10_w512", "g16_sgd_refr_s10_w512_static", (6, -3)),
+    ("refr $15\%$", "g16_sgd_refr_s15_w512", "g16_sgd_refr_s15_w512_static", (-48, 4)),
+    ("silent $10\%$", "g16_sgd_silent_s10_w512", "g16_sgd_silent_s10_w512_static", (4, -12)),
+]
+for name, cs, ct, off in DIAL:
+    (xm, xs), (ym, ys) = stat6(cs), stat6(ct)
+    ax.errorbar(xm, ym, xerr=xs, yerr=ys, marker="D", ms=4, color=C["surp"], lw=0, elinewidth=0.8, capsize=1.5)
+    ax.annotate(name, (xm, ym), textcoords="offset points", xytext=off, fontsize=7, color=C["surp"])
 ax.set_xlabel("sequential (split-MNIST) accuracy (%)")
 ax.set_ylabel("i.i.d. (static) accuracy (%)")
 fig.savefig(os.path.join(FIGS, "fig_frontier.pdf")); plt.close(fig)

@@ -64,7 +64,7 @@ def spike_eval(net, X_raw, mu, sd, y, T_s, thr, seed=0, batch=2000):
                 V[l] = V[l] + cur
                 fire = (V[l] >= thr[l]).float()
                 if net.kwta:  # spiking budget: only the k largest suprathreshold potentials fire
-                    k = net._k(net.sizes[l])
+                    k = net._k(l, net.sizes[l])
                     top = torch.zeros_like(fire)
                     idx = V[l].topk(k, dim=1).indices
                     top.scatter_(1, idx, 1.0)

@@ -523,6 +523,57 @@ CONFIGS = {
        for tag, kw in (("", {}), ("_d30", dict(bp_conn=0.30)),
                        ("_d30k5", dict(bp_conn=0.30, bp_kwta=0.05)))
        for lt, lr in (("3e4", 3e-4), ("1e3", 1e-3))},
+    # ---- phase 16: buying back the k-WTA tax.  The 15F decomposition priced 5% k-WTA at
+    # 4.4 points on features; the same k-WTA powers the exact isolation channel.  Sweep the
+    # sparsity level on both regimes (does milder k-WTA recover accuracy without collapsing
+    # retention?), with a BP control at the intermediate level (is the tax curve shared?).
+    **{f"cfeat_sgd_refr_s{tag}{sfx}": dict(model="ctx", dataset="cifarf", buffer=1000, policy="random",
+                                           schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                           mask="refractory", opt="sgd", eta=0.01, hidden=(512, 256), active_frac=af,
+                                           **({"static": True} if sfx else {}))
+       for tag, af in (("10", 0.10), ("15", 0.15), ("25", 0.25))
+       for sfx in ("", "_static")},
+    **{f"g16_sgd_refr_s{tag}_w512{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                              batch_wake=16, cadence=1, batch_replay=16, mask="refractory",
+                                              opt="sgd", eta=0.02, hidden=(512, 256), active_frac=af,
+                                              **({"static": True} if sfx else {}))
+       for tag, af in (("10", 0.10), ("15", 0.15), ("25", 0.25))
+       for sfx in ("", "_static")},
+    **{f"cfeat_bp_er_w512_d30k15_lr{lt}": dict(model="bp", dataset="cifarf", buffer=1000, policy="random",
+                                               replay="er", hidden=(512, 256), bp_lr=lr, bp_conn=0.30, bp_kwta=0.15)
+       for lt, lr in (("3e4", 3e-4), ("1e3", 1e-3))},
+    # 16b: asymmetric sparsity -- a milder input-facing layer buys feature capacity while the
+    # deeper layer stays at 5% and keeps the isolation channel
+    **{f"cfeat_sgd_refr_a{tag}{sfx}": dict(model="ctx", dataset="cifarf", buffer=1000, policy="random",
+                                           schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                           mask="refractory", opt="sgd", eta=0.01, hidden=(512, 256), active_frac=af,
+                                           **({"static": True} if sfx else {}))
+       for tag, af in (("1505", (0.15, 0.05)), ("2505", (0.25, 0.05)))
+       for sfx in ("", "_static")},
+    # ---- phase 16c: matched-sparsity controls -- the af=5% frontier was drawn at a suboptimal
+    # sparsity, so the s10/s15 discovery needs its own ceilings (silent, no-buffer) and its own
+    # bout gate before any dominance claim
+    **{f"g16_sgd_silent_s{tag}_w512{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                                batch_wake=16, cadence=1, batch_replay=16, mask="silent",
+                                                opt="sgd", eta=0.02, hidden=(512, 256), active_frac=af,
+                                                **({"static": True} if sfx else {}))
+       for tag, af in (("10", 0.10), ("15", 0.15))
+       for sfx in ("", "_static")},
+    **{f"g16_ctx_none_s{tag}_w512_static": dict(model="ctx", static=True, hidden=(512, 256), active_frac=af)
+       for tag, af in (("10", 0.10), ("15", 0.15))},
+    **{f"g16_sgd_block2048_s{tag}_w512{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                                   batch_wake=16, cadence=1, batch_replay=16, mask="refr_block",
+                                                   block=2048, gamma_p=0.5, opt="sgd", eta=0.02,
+                                                   hidden=(512, 256), active_frac=af,
+                                                   **({"static": True} if sfx else {}))
+       for tag, af in (("10", 0.10), ("15", 0.15))
+       for sfx in ("", "_static")},
+    # 16 hedge: eta may shift with activity level (more active units per batch)
+    **{f"cfeat_sgd_refr_s15_e02{sfx}": dict(model="ctx", dataset="cifarf", buffer=1000, policy="random",
+                                            schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                                            mask="refractory", opt="sgd", eta=0.02, hidden=(512, 256), active_frac=0.15,
+                                            **({"static": True} if sfx else {}))
+       for sfx in ("", "_static")},
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),

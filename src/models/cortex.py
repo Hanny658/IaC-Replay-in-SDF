@@ -93,7 +93,8 @@ class CortexNet:
             self._project_dale()
         # homeostasis state: v1 win-rate trace; v2 per-neuron gain on the basal drive plus a slow
         # trace of mean activity
-        self.p_win = [None] + [torch.full((sizes[l],), active_frac) for l in range(1, self.L)]
+        self.p_win = [None] + [torch.full((sizes[l],), float(active_frac[l - 1] if isinstance(active_frac, (tuple, list)) else active_frac))
+                               for l in range(1, self.L)]
         self.gain = [None] + [torch.ones(sizes[l]) for l in range(1, self.L)]
         self.a_bar = [None] + [None for _ in range(1, self.L)]
         self.set_point = [None] + [None for _ in range(1, self.L)]  # v3: fixed on the first night
@@ -178,8 +179,14 @@ class CortexNet:
     def _rate(self, x):
         return torch.relu(x) if self.act_name == "relu" else torch.tanh(x)
 
-    def _k(self, n):
-        return max(1, int(round(self.active_frac * n)))
+    def _af(self, l):
+        af = self.active_frac
+        if isinstance(af, (tuple, list)):
+            return af[min(l, len(af)) - 1]
+        return af
+
+    def _k(self, l, n):
+        return max(1, int(round(self._af(l) * n)))
 
     def act(self, l, x):
         """Firing rate of layer l given its value nodes (input layer passes through)."""
@@ -194,7 +201,7 @@ class CortexNet:
         if sup is not None and l < len(sup) and sup[l] is not None:
             a = a * (1.0 - sup[l])
         if self.kwta:
-            k = self._k(a.shape[1])
+            k = self._k(l, a.shape[1])
             thr = a.topk(k, dim=1).values[:, -1:]
             a = torch.where(a >= thr, a, torch.zeros_like(a))
         return a
@@ -564,7 +571,7 @@ class CortexNet:
             for l in range(1, self.L):
                 won = (a[l] > 0).float().mean(0)
                 self.p_win[l] = (1 - tau) * self.p_win[l] + tau * won
-                self.b[l] = self.b[l] + eta_homeo * (self.active_frac - self.p_win[l])
+                self.b[l] = self.b[l] + eta_homeo * (self._af(l) - self.p_win[l])
         elif self.homeo == "scaling":  # v2
             for l in range(1, self.L):
                 mean_a = a[l].mean(0)
