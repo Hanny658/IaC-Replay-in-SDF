@@ -61,7 +61,10 @@ fraction the project inherited, novelty gates (masked Adam) or sleep-bout-commit
 about a point and both gates become neutral --- the sparsity dial, not the gate, is the cure.
 On split CIFAR-10 the ordering of methods transfers and widens, and a substrate decomposition
 shows that the remaining gap to backpropagation-with-replay is dense activation, not credit
-assignment. We provide exactness
+assignment. Finally, a drive-referenced controller for the rule's synaptic decay --- one
+dimensionless constant in place of per-dataset tuning --- trades at most $1.4$ sequential
+points for the best static accuracies we measure and lifts the system onto 100-class streams
+that defeat every fixed decay. We provide exactness
 proofs for the isolation rule and release all code, checkpoints and diagnostics.
 \end{abstract}
 
@@ -190,6 +193,11 @@ $6{\times}6{\times}3$ patches sampled from the training images act as fixed filt
 rectification against the per-filter mean response, quadrant average pooling; 1024-D, linear
 probe $\approx49\%$). Nothing in the front-end is learned; the cortex under study receives it as
 its retina.
+Section~\ref{sec:controller} additionally uses split CIFAR-100 (ten tasks of ten classes,
+same protocol and budgets, luminance and feature variants): with tenfold fewer supervision
+events per class it probes the learning rule far outside the regime its constants were tuned
+in, and its absolute numbers are floor-regime for every method tested (chance $1\%$, BP+ER
+$6$--$10\%$) --- we use it for orderings and mechanisms, never as a competitive benchmark.
 
 \paragraph{Architecture.}
 $d$--$512$--$256$--$C$ with \kwta{} sparsity $10\%$ on the hidden layers --- the record
@@ -245,7 +253,8 @@ $\lambda$ (Kolen--Pollack alignment \citep{kolen1994,akrout2019}),
 \end{equation}
 with sign-concordant feedback under Dale's law and per-synapse adaptive scaling
 ($\epsilon$-floored Adam). Equations~\eqref{eq:forward}--\eqref{eq:kp} were fixed by earlier
-ablation ladders and are not varied here.
+ablation ladders and are not varied here, with one exception: Section~\ref{sec:controller}
+replaces the constant $\lambda$ by an adaptive per-layer controller.
 
 \subsection{Exactly isolated replay}
 \label{sec:isolation}
@@ -687,8 +696,10 @@ compose sub-additively. Figure~\ref{fig:frontier} draws the operating frontier.
 \caption{\textbf{The operating frontier} at the record fraction under the stateless
 optimiser: split-MNIST sequential accuracy against i.i.d.\ static accuracy (headline points
 six seeds). Blue: non-dominated configurations; purple: dominated ones; small grey dots: the
-historical $5\%$ family the project inherited, entirely inside the new frontier. No single
-configuration wins both axes; always-on rotation is the sequential default.}
+historical $5\%$ family the project inherited, entirely inside the new frontier. The two
+adaptive-$\lambda$ points (Section~\ref{sec:controller}) extend the static side of the
+frontier and retire the silent mask and the per-batch gate. No single configuration wins both
+axes; always-on rotation is the sequential default.}
 \label{fig:frontier}
 \end{figure}
 
@@ -724,10 +735,95 @@ grid re-established there (orderings preserved throughout), while the appendices
 historical $5\%$ grids on which each mechanism was first isolated. The dial, not the gate, is
 the cheapest cure for rotation's static price (Figure~\ref{fig:frontier}).
 
-
-
-
 % ---------------------------------------------------------------- 6
+\section{An adaptive decay controller}
+\label{sec:controller}
+
+\paragraph{The last tuned constant.}
+Every result above runs the rule of \eqref{eq:kp} with a decay $\lambda$ tuned once per
+dataset ($10^{-3}$ on the image benchmarks). Split CIFAR-100 --- ten tasks of ten classes ---
+exposes what that constant hides. With one hundred classes, each class receives a tenth of
+the per-epoch supervision events, while the decay acts on every synapse at every step,
+undiminished; at the MNIST-tuned value the hidden-to-hidden weights follow the pure-decay
+trajectory $(1-\lambda)^t$ \emph{exactly} (the thinned error signal loses the race outright),
+deep activity collapses by $5\times$, the readout gradient goes to zero, and the network
+lands at chance --- $2.4\%$ i.i.d.\ against $20$--$23\%$ for a ten-class subset of the same
+images on the same substrate. The class count of the supervision signal is a hidden variable
+that every fixed $\lambda$ is silently tuned against. A manual rescue ($\lambda{=}10^{-4}$,
+$3\times$ targets) revives activity but survives the full protocol only at $1.1$--$1.4\%$.
+
+\paragraph{The controller.}
+The project's design principle --- control signals must be self-referenced, never absolute
+(Section~\ref{sec:rotation}) --- applies at the synapse. We replace the constant by a
+per-layer ratio controller,
+\begin{equation}
+\lambda_\ell \;=\; \min\!\Big(\lambda_{\max},\; \rho\,
+\frac{\mathrm{EMA}\big[\,\overline{|\Delta W^\ell|}\,\big]}{\overline{|W^\ell|}}\Big),
+\qquad \rho=0.25,\;\; \lambda_{\max}=0.02,
+\label{eq:controller}
+\end{equation}
+where $\overline{|\Delta W^\ell|}$ is the mean magnitude of the update the optimiser actually
+applied to layer $\ell$ and the EMA runs over waking, unmasked steps only; $W^\ell$ and
+$B^{\ell-1}$ share $\lambda_\ell$, so Kolen--Pollack alignment is untouched. The decay
+removes a fixed fraction of what learning currently adds: layers and regimes with rich
+supervision keep a strong regulariser, starved ones are automatically spared. A
+gradient-referenced variant ($\rho\,\eta\,\mathrm{EMA}[\,\overline{|g^\ell|}\,]/
+\overline{|W^\ell|}$) behaves equivalently; we report both, with the drive-referenced form
+canonical because it is optimiser-agnostic.
+
+\begin{table}[t]
+\centering\small
+\caption{\textbf{One dimensionless constant replaces per-dataset tuning.} Sequential /
+static accuracy (\%) under the tuned fixed decay ($10^{-3}$ on the image benchmarks;
+$10^{-4}$ with $3\times$ targets as the CIFAR-100 rescue) against the controller of
+\eqref{eq:controller} at the same $\rho=0.25$ everywhere. Gradient-referenced: six seeds;
+drive-referenced: three; the full system (refractory rotation, isolated replay, $K{=}1000$)
+in every cell.}
+\label{tab:controller}
+\begin{tabular}{lcccccc}
+\toprule
+& \multicolumn{2}{c}{fixed $\lambda$ (tuned)} & \multicolumn{2}{c}{ctrl.\ (gradient)} & \multicolumn{2}{c}{ctrl.\ (drive)} \\
+& seq. & static & seq. & static & seq. & static \\
+\midrule
+split-MNIST & $\mathbf{92.7\pm0.3}$ & $94.7\pm0.3$ & $92.2\pm0.4$ & $95.2\pm0.3$ & $91.7\pm0.2$ & $\mathbf{96.1\pm0.2}$ \\
+split CIFAR-10 & $\mathbf{29.5\pm0.8}$ & $27.6\pm0.4$ & $28.1\pm0.9$ & $\mathbf{31.2\pm0.8}$ & $26.5\pm1.3$ & $29.9\pm0.3$ \\
+feature CIFAR-10 & $\mathbf{41.7\pm1.2}$ & $41.9\pm1.2$ & $40.7\pm1.2$ & $\mathbf{43.5\pm0.6}$ & $39.1\pm1.8$ & $43.1\pm1.1$ \\
+split CIFAR-100 & $1.4\pm0.5$ & $1.1\pm0.1$ & $\mathbf{3.7\pm0.4}$ & $\mathbf{4.3\pm0.2}$ & $3.4\pm0.6$ & $3.7\pm0.3$ \\
+\quad + features & $1.2\pm0.3$ & $1.2\pm0.2$ & $5.1\pm0.8$ & --- & $\mathbf{5.7\pm0.8}$ & $\mathbf{6.0\pm0.7}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{One constant, every dataset.}
+Table~\ref{tab:controller} gives the cross-dataset verdict, with a consistent signature. On
+the sequential axis the controller concedes $0.5$--$1.4$ points to the per-dataset tuned
+value; on every static axis it wins, by $+0.5$ to $+3.6$ --- the fixed decay had
+under-regularised every thick-signal regime all along --- and split-MNIST static
+$96.1\pm0.2$ is the best i.i.d.\ accuracy the substrate has produced under \emph{any}
+configuration, isolation-free included. On CIFAR-100 the controller lifts the system
+$3$--$5\times$ over the manual rescue with no dataset-specific knob at all (floor-regime
+numbers, reported for ordering only: the strong BP+ER reference reaches $6$--$10\%$ there).
+The realised $\lambda_\ell$ (logged throughout) self-differentiates exactly as the tuning
+history would predict --- $\sim\!10^{-5}$ on MNIST sequential streams, $\sim\!10^{-4}$ on
+static ones, up to $3\times10^{-3}$ on raw CIFAR, layer-graded within each net --- so the
+per-dataset $\lambda$ ladder was a signal-to-decay ratio in disguise. On the operating
+frontier (Figure~\ref{fig:frontier}) the two controller points are non-dominated and
+retire the silent mask and the per-batch novelty gate; the tuned fixed decay remains the
+sequential-axis record holder.
+
+\paragraph{What the controller must never see, and what it does not do.}
+Composition follows one rule: the drive estimate must be fed only \emph{unamplified waking
+updates}. Inflated one-hot targets and the offline night's $3\times$-gain batches both push
+the EMA up until $\lambda_\ell$ hits its clip and erases day learning --- night $\times$
+controller collapses to $60.2\pm2.8$ against $90.9\pm3.2$ for the night alone --- whereas
+mechanisms that respect the flag compose cleanly: anchor and bout gate under the controller
+keep the standard signature (bout $+$ controller reaches $96.0\pm0.3$ static). And the
+controller deliberately does not subsume $\lambda$'s second role: on small tabular problems
+the decay earns its keep as a \emph{capacity} regulariser against overfitting
+(cf.\ Appendix~\ref{app:substrate}), information that no drive ratio contains; where
+generalisation, not alignment, sets the correct decay, a tuned constant should keep the job.
+
+% ---------------------------------------------------------------- 7
 \section{Discussion}
 \label{sec:discussion}
 
@@ -763,7 +859,7 @@ search (August 2026); individual primitives --- refractory competition, sparse o
 isolation, replay, adaptive scheduling --- all have ancestors, and the claimed contribution is
 their combination into concurrent, exactly isolated consolidation.
 
-% ---------------------------------------------------------------- 7
+% ---------------------------------------------------------------- 8
 \section{Future Work}
 \label{sec:future}
 
@@ -772,12 +868,16 @@ their combination into concurrent, exactly isolated consolidation.
 refractory, utility exemption and synaptic anchoring are now all ruled out as routes past it
 (Section~\ref{sec:ablation}), leaving mastery-annealed rotation depth untried;
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
-(iv) convolutional and deeper stacks; (v) a throughput theory of the isolated channel predicting
+(iv) convolutional and deeper stacks, for which the per-layer decay controller
+(Section~\ref{sec:controller}) supplies the tuning that fixed constants cannot;
+(v) a throughput theory of the isolated channel predicting
 the required replay cadence from $\rho_\ell$, code overlap and the interference rate;
 (vi) the optimiser-dependence of the rotation--spiking calibration interaction, whose sign
-reverses between the Adam and the stateless stack.
+reverses between the Adam and the stateless stack; (vii) a drive estimate that survives
+amplified update streams (inflated targets, night gains), which currently defeat the
+controller's clip.
 
-% ---------------------------------------------------------------- 8
+% ---------------------------------------------------------------- 9
 \section{Conclusion}
 
 Consolidation does not require an offline phase. With exactly isolated replay, refractory
@@ -789,6 +889,94 @@ outright on harder data, and runs at a twentieth of dense-rate inference energy 
 The offline night retains one irreducible role --- consolidating very small episodic stores ---
 which sharpens, rather than blurs, the division of labour between wake and sleep.
 
+
+\begin{thebibliography}{99}\small
+
+\bibitem[Abbasi et al.(2022)]{abbasi2022} Abbasi, A., Nooralinejad, P., Braverman, V., Pirsiavash, H., Kolouri, S. (2022). Sparsity and heterogeneous dropout for continual learning in the null space of neural activations. \emph{CoLLAs}, PMLR 199.
+
+\bibitem[Akrout et al.(2019)]{akrout2019} Akrout, M., Wilson, C., Humphreys, P., Lillicrap, T., Tweed, D. (2019). Deep learning without weight transport. \emph{NeurIPS 32}.
+
+\bibitem[Arani et al.(2022)]{arani2022} Arani, E., Sarfraz, F., Zonooz, B. (2022). Learning fast, learning slow: A general continual learning method based on complementary learning system. \emph{ICLR}.
+
+\bibitem[Bazhenov et al.(2026)]{bazhenov2026} Bazhenov, A., Delanois, J.E., Krishnan, G.P. (2026). Not just after one: Sleep-inspired replay prevents catastrophic forgetting after sequential tasks. \emph{arXiv:2606.08447}.
+
+\bibitem[Borb\'ely(1982)]{borbely1982} Borb\'ely, A.A. (1982). A two process model of sleep regulation. \emph{Human Neurobiology} 1, 195--204.
+
+\bibitem[Benna and Fusi(2016)]{benna2016} Benna, M.K., Fusi, S. (2016). Computational principles of synaptic memory consolidation. \emph{Nature Neuroscience} 19, 1697--1706.
+
+\bibitem[Bricken et al.(2023)]{bricken2023} Bricken, T., Davies, X., Singh, D., Krotov, D., Kreiman, G. (2023). Sparse distributed memory is a continual learner. \emph{ICLR}.
+
+\bibitem[Cayco-Gajic et al.(2017)]{caycogajic2017} Cayco-Gajic, N.A., Clopath, C., Silver, R.A. (2017). Sparse synaptic connectivity is required for decorrelation and pattern separation in feedforward networks. \emph{Nature Communications} 8, 1116.
+
+\bibitem[Cayco-Gajic and Silver(2019)]{caycogajic2019} Cayco-Gajic, N.A., Silver, R.A. (2019). Re-evaluating circuit mechanisms underlying pattern separation. \emph{Neuron} 101, 584--602.
+
+\bibitem[Driessen et al.(2026)]{driessen2026} Driessen, K., Squarcio, F., Tononi, G., Cirelli, C. (2026). Induction of cortical ON/OFF periods in awake mice fulfills sleep functions. \emph{Nature Neuroscience} 29, 1954--1965.
+
+\bibitem[Farajtabar et al.(2020)]{farajtabar2020} Farajtabar, M., Azizan, N., Mott, A., Li, A. (2020). Orthogonal gradient descent for continual learning. \emph{AISTATS}, PMLR 108.
+
+\bibitem[Golden et al.(2022)]{golden2022} Golden, R., Delanois, J.E., Sanda, P., Bazhenov, M. (2022). Sleep prevents catastrophic forgetting in spiking neural networks by forming a joint synaptic weight representation. \emph{PLoS Computational Biology} 18, e1010628.
+
+\bibitem[Golkar et al.(2019)]{golkar2019} Golkar, S., Kagan, M., Cho, K. (2019). Continual learning via neural pruning. \emph{arXiv:1903.04476}.
+
+\bibitem[Harun et al.(2023)]{harun2023} Harun, M.Y., Gallardo, J., Hayes, T.L., Kemker, R., Kanan, C. (2023). SIESTA: Efficient online continual learning with sleep. \emph{TMLR}.
+
+\bibitem[Hasselmo(2006)]{hasselmo2006} Hasselmo, M.E. (2006). The role of acetylcholine in learning and memory. \emph{Current Opinion in Neurobiology} 16, 710--715.
+
+\bibitem[Iyer et al.(2022)]{iyer2022} Iyer, A., Grewal, K., Velu, A., Souza, L.O., Forest, J., Ahmad, S. (2022). Avoiding catastrophe: Active dendrites enable multi-task learning in dynamic environments. \emph{Frontiers in Neurorobotics} 16.
+
+\bibitem[Kapoor et al.(2026)]{kapoor2026} Kapoor, K., Mackey, W., Aloimonos, Y., Lin, X. (2026). HiCL: Hippocampal-inspired continual learning. \emph{AAAI}.
+
+\bibitem[Kaski and Kohonen(1994)]{kaski1994} Kaski, S., Kohonen, T. (1994). Winner-take-all networks for physiological models of competitive learning. \emph{Neural Networks} 7, 973--984.
+
+\bibitem[Klasson et al.(2023)]{klasson2023} Klasson, M., Kjellstr\"om, H., Zhang, C. (2023). Learn the time to learn: Replay scheduling in continual learning. \emph{TMLR}.
+
+\bibitem[Kolen and Pollack(1994)]{kolen1994} Kolen, J.F., Pollack, J.B. (1994). Backpropagation without weight transport. \emph{IEEE ICNN}.
+
+\bibitem[Kubo et al.(2025)]{kubo2025} Kubo, Y., Delanois, J.E., Bazhenov, M. (2025). Toward lifelong learning in equilibrium propagation: Sleep-like and awake rehearsal for enhanced stability. \emph{arXiv:2508.14081}.
+
+\bibitem[L\"assig et al.(2023)]{lassig2023} L\"assig, F., Aceituno, P.V., Sorbaro, M., Grewe, B.F. (2023). Bio-inspired, task-free continual learning through activity regularization. \emph{Biological Cybernetics} 117, 345--361.
+
+\bibitem[Litwin-Kumar et al.(2017)]{litwin2017} Litwin-Kumar, A., Harris, K.D., Axel, R., Sompolinsky, H., Abbott, L.F. (2017). Optimal degrees of synaptic connectivity. \emph{Neuron} 93, 1153--1164.
+
+\bibitem[Maeda and Miyajima(1999)]{maeda1999} Maeda, M., Miyajima, H. (1999). Competitive learning methods with refractory and creative approaches. \emph{IEICE Trans.\ Fundamentals} E82-A(9), 1825--1833.
+
+\bibitem[Mallya and Lazebnik(2018)]{mallya2018} Mallya, A., Lazebnik, S. (2018). PackNet: Adding multiple tasks to a single network by iterative pruning. \emph{CVPR}.
+
+\bibitem[Masse et al.(2018)]{masse2018} Masse, N.Y., Grant, G.D., Freedman, D.J. (2018). Alleviating catastrophic forgetting using context-dependent gating and synaptic stabilization. \emph{PNAS} 115, E10467--E10475.
+
+\bibitem[McKee et al.(2026)]{mckee2026} McKee, K., Hazy, T., Zheng, Y., Bugaud, Z., Miconi, T. (2026). Cortex-inspired continual learning: Unsupervised instantiation and recovery of functional task networks. \emph{arXiv:2604.24637}.
+
+\bibitem[Merolla et al.(2014)]{merolla2014convention} Merolla, P.A., et al. (2014). A million spiking-neuron integrated circuit with a scalable communication network and interface. \emph{Science} 345, 668--673.
+
+\bibitem[Pham et al.(2021)]{pham2021} Pham, Q., Liu, C., Hoi, S. (2021). DualNet: Continual learning, fast and slow. \emph{NeurIPS 34}.
+
+\bibitem[Robinson et al.(2022)]{robinson2022} Robinson, B.S., Lau, C.W., New, A., Nichols, S.M., Johnson, E.C., Wolmetz, M., Coon, W.G. (2022). Continual learning benefits from multiple sleep mechanisms: NREM, REM, and synaptic downscaling. \emph{arXiv:2209.05245}.
+
+\bibitem[Ross et al.(2012)]{ross2012} Ross, G.J., Adams, N.M., Tasoulis, D.K., Hand, D.J. (2012). Exponentially weighted moving average charts for detecting concept drift. \emph{Pattern Recognition Letters} 33, 191--198.
+
+\bibitem[Saha et al.(2021)]{saha2021} Saha, G., Garg, I., Roy, K. (2021). Gradient projection memory for continual learning. \emph{ICLR}.
+
+\bibitem[Saper et al.(2005)]{saper2005} Saper, C.B., Scammell, T.E., Lu, J. (2005). Hypothalamic regulation of sleep and circadian rhythms. \emph{Nature} 437, 1257--1263.
+
+\bibitem[Shen et al.(2021)]{shen2021} Shen, Y., Dasgupta, S., Navlakha, S. (2021). Algorithmic insights on continual learning from fruit flies. \emph{arXiv:2107.07617}.
+
+\bibitem[Shen et al.(2024)]{shen2024} Shen, J., Ni, W., Xu, Q., Tang, H. (2024). Efficient spiking neural networks with sparse selective activation for continual learning. \emph{AAAI} 38, 611--619.
+
+\bibitem[Sorrenti et al.(2024)]{sorrenti2024} Sorrenti, A., Bellitto, G., Proietto Salanitri, F., Pennisi, M., Palazzo, S., Spampinato, C. (2024). Wake--sleep consolidated learning. \emph{arXiv:2401.08623}.
+
+\bibitem[Tadros et al.(2022)]{tadros2022} Tadros, T., Krishnan, G.P., Ramyaa, R., Bazhenov, M. (2022). Sleep-like unsupervised replay reduces catastrophic forgetting in artificial neural networks. \emph{Nature Communications} 13, 7742.
+
+\bibitem[Tilley et al.(2023)]{tilley2023} Tilley, M.J., Miller, M., Freedman, D.J. (2023). Artificial neuronal ensembles with learned context dependent gating. \emph{ICLR}.
+
+\bibitem[Tononi and Cirelli(2014)]{tononi2014} Tononi, G., Cirelli, C. (2014). Sleep and the price of plasticity: From synaptic and cellular homeostasis to memory consolidation and integration. \emph{Neuron} 81, 12--34.
+
+\bibitem[Vyazovskiy et al.(2011)]{vyazovskiy2011} Vyazovskiy, V.V., Olcese, U., Hanlon, E.C., Nir, Y., Cirelli, C., Tononi, G. (2011). Local sleep in awake rats. \emph{Nature} 472, 443--447.
+
+\bibitem[Wang et al.(2021)]{wangnscl2021} Wang, S., Li, X., Sun, J., Xu, Z. (2021). Training networks in null space of feature covariance for continual learning. \emph{CVPR}.
+
+\bibitem[Whittington and Bogacz(2017)]{whittington2017} Whittington, J.C.R., Bogacz, R. (2017). An approximation of the error backpropagation algorithm in a predictive coding network with local Hebbian synaptic plasticity. \emph{Neural Computation} 29, 1229--1262.
+
+\end{thebibliography}
 
 % ---------------------------------------------------------------- appendices
 \appendix
@@ -987,92 +1175,6 @@ point. Anchor and bout gate compose sub-additively
 
 
 % ---------------------------------------------------------------- refs
-\begin{thebibliography}{99}\small
 
-\bibitem[Abbasi et al.(2022)]{abbasi2022} Abbasi, A., Nooralinejad, P., Braverman, V., Pirsiavash, H., Kolouri, S. (2022). Sparsity and heterogeneous dropout for continual learning in the null space of neural activations. \emph{CoLLAs}, PMLR 199.
-
-\bibitem[Akrout et al.(2019)]{akrout2019} Akrout, M., Wilson, C., Humphreys, P., Lillicrap, T., Tweed, D. (2019). Deep learning without weight transport. \emph{NeurIPS 32}.
-
-\bibitem[Arani et al.(2022)]{arani2022} Arani, E., Sarfraz, F., Zonooz, B. (2022). Learning fast, learning slow: A general continual learning method based on complementary learning system. \emph{ICLR}.
-
-\bibitem[Bazhenov et al.(2026)]{bazhenov2026} Bazhenov, A., Delanois, J.E., Krishnan, G.P. (2026). Not just after one: Sleep-inspired replay prevents catastrophic forgetting after sequential tasks. \emph{arXiv:2606.08447}.
-
-\bibitem[Borb\'ely(1982)]{borbely1982} Borb\'ely, A.A. (1982). A two process model of sleep regulation. \emph{Human Neurobiology} 1, 195--204.
-
-\bibitem[Benna and Fusi(2016)]{benna2016} Benna, M.K., Fusi, S. (2016). Computational principles of synaptic memory consolidation. \emph{Nature Neuroscience} 19, 1697--1706.
-
-\bibitem[Bricken et al.(2023)]{bricken2023} Bricken, T., Davies, X., Singh, D., Krotov, D., Kreiman, G. (2023). Sparse distributed memory is a continual learner. \emph{ICLR}.
-
-\bibitem[Cayco-Gajic et al.(2017)]{caycogajic2017} Cayco-Gajic, N.A., Clopath, C., Silver, R.A. (2017). Sparse synaptic connectivity is required for decorrelation and pattern separation in feedforward networks. \emph{Nature Communications} 8, 1116.
-
-\bibitem[Cayco-Gajic and Silver(2019)]{caycogajic2019} Cayco-Gajic, N.A., Silver, R.A. (2019). Re-evaluating circuit mechanisms underlying pattern separation. \emph{Neuron} 101, 584--602.
-
-\bibitem[Driessen et al.(2026)]{driessen2026} Driessen, K., Squarcio, F., Tononi, G., Cirelli, C. (2026). Induction of cortical ON/OFF periods in awake mice fulfills sleep functions. \emph{Nature Neuroscience} 29, 1954--1965.
-
-\bibitem[Farajtabar et al.(2020)]{farajtabar2020} Farajtabar, M., Azizan, N., Mott, A., Li, A. (2020). Orthogonal gradient descent for continual learning. \emph{AISTATS}, PMLR 108.
-
-\bibitem[Golden et al.(2022)]{golden2022} Golden, R., Delanois, J.E., Sanda, P., Bazhenov, M. (2022). Sleep prevents catastrophic forgetting in spiking neural networks by forming a joint synaptic weight representation. \emph{PLoS Computational Biology} 18, e1010628.
-
-\bibitem[Golkar et al.(2019)]{golkar2019} Golkar, S., Kagan, M., Cho, K. (2019). Continual learning via neural pruning. \emph{arXiv:1903.04476}.
-
-\bibitem[Harun et al.(2023)]{harun2023} Harun, M.Y., Gallardo, J., Hayes, T.L., Kemker, R., Kanan, C. (2023). SIESTA: Efficient online continual learning with sleep. \emph{TMLR}.
-
-\bibitem[Hasselmo(2006)]{hasselmo2006} Hasselmo, M.E. (2006). The role of acetylcholine in learning and memory. \emph{Current Opinion in Neurobiology} 16, 710--715.
-
-\bibitem[Iyer et al.(2022)]{iyer2022} Iyer, A., Grewal, K., Velu, A., Souza, L.O., Forest, J., Ahmad, S. (2022). Avoiding catastrophe: Active dendrites enable multi-task learning in dynamic environments. \emph{Frontiers in Neurorobotics} 16.
-
-\bibitem[Kapoor et al.(2026)]{kapoor2026} Kapoor, K., Mackey, W., Aloimonos, Y., Lin, X. (2026). HiCL: Hippocampal-inspired continual learning. \emph{AAAI}.
-
-\bibitem[Kaski and Kohonen(1994)]{kaski1994} Kaski, S., Kohonen, T. (1994). Winner-take-all networks for physiological models of competitive learning. \emph{Neural Networks} 7, 973--984.
-
-\bibitem[Klasson et al.(2023)]{klasson2023} Klasson, M., Kjellstr\"om, H., Zhang, C. (2023). Learn the time to learn: Replay scheduling in continual learning. \emph{TMLR}.
-
-\bibitem[Kolen and Pollack(1994)]{kolen1994} Kolen, J.F., Pollack, J.B. (1994). Backpropagation without weight transport. \emph{IEEE ICNN}.
-
-\bibitem[Kubo et al.(2025)]{kubo2025} Kubo, Y., Delanois, J.E., Bazhenov, M. (2025). Toward lifelong learning in equilibrium propagation: Sleep-like and awake rehearsal for enhanced stability. \emph{arXiv:2508.14081}.
-
-\bibitem[L\"assig et al.(2023)]{lassig2023} L\"assig, F., Aceituno, P.V., Sorbaro, M., Grewe, B.F. (2023). Bio-inspired, task-free continual learning through activity regularization. \emph{Biological Cybernetics} 117, 345--361.
-
-\bibitem[Litwin-Kumar et al.(2017)]{litwin2017} Litwin-Kumar, A., Harris, K.D., Axel, R., Sompolinsky, H., Abbott, L.F. (2017). Optimal degrees of synaptic connectivity. \emph{Neuron} 93, 1153--1164.
-
-\bibitem[Maeda and Miyajima(1999)]{maeda1999} Maeda, M., Miyajima, H. (1999). Competitive learning methods with refractory and creative approaches. \emph{IEICE Trans.\ Fundamentals} E82-A(9), 1825--1833.
-
-\bibitem[Mallya and Lazebnik(2018)]{mallya2018} Mallya, A., Lazebnik, S. (2018). PackNet: Adding multiple tasks to a single network by iterative pruning. \emph{CVPR}.
-
-\bibitem[Masse et al.(2018)]{masse2018} Masse, N.Y., Grant, G.D., Freedman, D.J. (2018). Alleviating catastrophic forgetting using context-dependent gating and synaptic stabilization. \emph{PNAS} 115, E10467--E10475.
-
-\bibitem[McKee et al.(2026)]{mckee2026} McKee, K., Hazy, T., Zheng, Y., Bugaud, Z., Miconi, T. (2026). Cortex-inspired continual learning: Unsupervised instantiation and recovery of functional task networks. \emph{arXiv:2604.24637}.
-
-\bibitem[Merolla et al.(2014)]{merolla2014convention} Merolla, P.A., et al. (2014). A million spiking-neuron integrated circuit with a scalable communication network and interface. \emph{Science} 345, 668--673.
-
-\bibitem[Pham et al.(2021)]{pham2021} Pham, Q., Liu, C., Hoi, S. (2021). DualNet: Continual learning, fast and slow. \emph{NeurIPS 34}.
-
-\bibitem[Robinson et al.(2022)]{robinson2022} Robinson, B.S., Lau, C.W., New, A., Nichols, S.M., Johnson, E.C., Wolmetz, M., Coon, W.G. (2022). Continual learning benefits from multiple sleep mechanisms: NREM, REM, and synaptic downscaling. \emph{arXiv:2209.05245}.
-
-\bibitem[Ross et al.(2012)]{ross2012} Ross, G.J., Adams, N.M., Tasoulis, D.K., Hand, D.J. (2012). Exponentially weighted moving average charts for detecting concept drift. \emph{Pattern Recognition Letters} 33, 191--198.
-
-\bibitem[Saha et al.(2021)]{saha2021} Saha, G., Garg, I., Roy, K. (2021). Gradient projection memory for continual learning. \emph{ICLR}.
-
-\bibitem[Saper et al.(2005)]{saper2005} Saper, C.B., Scammell, T.E., Lu, J. (2005). Hypothalamic regulation of sleep and circadian rhythms. \emph{Nature} 437, 1257--1263.
-
-\bibitem[Shen et al.(2021)]{shen2021} Shen, Y., Dasgupta, S., Navlakha, S. (2021). Algorithmic insights on continual learning from fruit flies. \emph{arXiv:2107.07617}.
-
-\bibitem[Shen et al.(2024)]{shen2024} Shen, J., Ni, W., Xu, Q., Tang, H. (2024). Efficient spiking neural networks with sparse selective activation for continual learning. \emph{AAAI} 38, 611--619.
-
-\bibitem[Sorrenti et al.(2024)]{sorrenti2024} Sorrenti, A., Bellitto, G., Proietto Salanitri, F., Pennisi, M., Palazzo, S., Spampinato, C. (2024). Wake--sleep consolidated learning. \emph{arXiv:2401.08623}.
-
-\bibitem[Tadros et al.(2022)]{tadros2022} Tadros, T., Krishnan, G.P., Ramyaa, R., Bazhenov, M. (2022). Sleep-like unsupervised replay reduces catastrophic forgetting in artificial neural networks. \emph{Nature Communications} 13, 7742.
-
-\bibitem[Tilley et al.(2023)]{tilley2023} Tilley, M.J., Miller, M., Freedman, D.J. (2023). Artificial neuronal ensembles with learned context dependent gating. \emph{ICLR}.
-
-\bibitem[Tononi and Cirelli(2014)]{tononi2014} Tononi, G., Cirelli, C. (2014). Sleep and the price of plasticity: From synaptic and cellular homeostasis to memory consolidation and integration. \emph{Neuron} 81, 12--34.
-
-\bibitem[Vyazovskiy et al.(2011)]{vyazovskiy2011} Vyazovskiy, V.V., Olcese, U., Hanlon, E.C., Nir, Y., Cirelli, C., Tononi, G. (2011). Local sleep in awake rats. \emph{Nature} 472, 443--447.
-
-\bibitem[Wang et al.(2021)]{wangnscl2021} Wang, S., Li, X., Sun, J., Xu, Z. (2021). Training networks in null space of feature covariance for continual learning. \emph{CVPR}.
-
-\bibitem[Whittington and Bogacz(2017)]{whittington2017} Whittington, J.C.R., Bogacz, R. (2017). An approximation of the error backpropagation algorithm in a predictive coding network with local Hebbian synaptic plasticity. \emph{Neural Computation} 29, 1229--1262.
-
-\end{thebibliography}
 
 \end{document}

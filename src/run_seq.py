@@ -719,6 +719,20 @@ CONFIGS = {
                                  policy="random", batch_wake=16, cadence=1, batch_replay=16,
                                  hidden=(512, 256), active_frac=0.10, mask="refractory", opt="sgd",
                                  eta=0.02, kp_adapt=0.25),
+    # ---- phase 20: depth.  Does the local system survive stacking?  MNIST ladder d3/d4/d5
+    # on the record substrate, adaptive controller vs the tuned fixed lambda at every depth
+    # (claim: per-layer self-differentiation of the decay matters more the longer the KP chain).
+    # BP+ER at the same widths is the depth-tolerance comparator.
+    **{f"g20_d{d}_{lam}{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                    batch_wake=16, cadence=1, batch_replay=16, hidden=h,
+                                    active_frac=0.10, mask="refractory", opt="sgd", eta=0.02,
+                                    **({"kp_adapt": 0.25} if lam == "kad" else {}),
+                                    **({"static": True} if sfx else {}))
+       for d, h in ((3, (512, 256, 128)), (4, (512, 256, 128, 128)), (5, (512, 256, 128, 128, 128)))
+       for lam in ("kad", "fix")
+       for sfx in ("", "_static")},
+    **{f"g20_d{d}_bp_er": dict(model="bp", buffer=1000, policy="random", replay="er", hidden=h)
+       for d, h in ((3, (512, 256, 128)), (4, (512, 256, 128, 128)), (5, (512, 256, 128, 128, 128)))},
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -1035,9 +1049,10 @@ class KWTA(torch.nn.Module):
 def make_bp(seed, hidden, n_in=784, lr=1e-3, kwta=None, n_out=10):
     torch.manual_seed(seed)
     act = (lambda: KWTA(kwta)) if kwta else torch.nn.ReLU
-    net = torch.nn.Sequential(torch.nn.Linear(n_in, hidden[0]), act(),
-                              torch.nn.Linear(hidden[0], hidden[1]), act(),
-                              torch.nn.Linear(hidden[1], n_out))
+    layers, w = [], [n_in, *hidden]
+    for a, b in zip(w[:-1], w[1:]):
+        layers += [torch.nn.Linear(a, b), act()]
+    net = torch.nn.Sequential(*layers, torch.nn.Linear(w[-1], n_out))
     return net, torch.optim.Adam(net.parameters(), lr=lr, weight_decay=1e-3)
 
 

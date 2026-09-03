@@ -135,11 +135,14 @@ def stat6(cfg):
 FRONTIER = [  # s10 record substrate: label, seq cfg, static cfg, non-dominated, offset
     ("always-on", "g16_sgd_refr_s10_w512", "g16_sgd_refr_s10_w512_static", True, (5, -3)),
     ("bout gate", "g16_sgd_block2048_s10_w512", "g16_sgd_block2048_s10_w512_static", True, (-40, 5)),
-    ("per-batch gate", "g17_sgd_prog05_s10", "static_g17_sgd_prog05_s10", True, (-30, 6)),
-    ("silent", "g16_sgd_silent_s10_w512", "g16_sgd_silent_s10_w512_static", True, (-8, 6)),
+    ("per-batch gate", "g17_sgd_prog05_s10", "static_g17_sgd_prog05_s10", False, (6, -3)),
+    ("silent", "g16_sgd_silent_s10_w512", "g16_sgd_silent_s10_w512_static", False, (-24, -12)),
     ("$-$isolation", "g17_sgd_none_s10", "static_g17_sgd_none_s10", True, (5, -3)),
+    # phase 19: the adaptive decay controller retires silent and the per-batch gate
+    ("adaptive $\\lambda$ (grad)", "g19_kad_mnist", "g19_kad_mnist_static", True, (6, -2)),
+    ("adaptive $\\lambda$ (drive)", "g19b_mnist", "g19b_mnist_static", True, (-64, -3)),
     ("$+$anchor", "g17_sgd_anchor_s10", "static_g17_sgd_anchor_s10", False, (5, -9)),
-    ("masked Adam", "g17_adam_refr_s10", "static_g17_adam_refr_s10", False, (-20, -12)),
+    ("masked Adam", "g17_adam_refr_s10", "static_g17_adam_refr_s10", False, (-56, -5)),
     ("Adam, leak", "g17_adam_leak_s10", "static_g17_adam_leak_s10", False, (5, -3)),
 ]
 HIST5 = [  # the historical 5% family (faded)
