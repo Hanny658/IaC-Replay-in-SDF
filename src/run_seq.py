@@ -674,6 +674,7 @@ CONFIGS = {
     **{f"g19_kad_{ds}{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
                                   batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
                                   active_frac=0.10, mask="refractory", opt="sgd", kp_adapt=0.25,
+                                  kp_adapt_mode="grad",  # v1 (gradient-referenced) formula
                                   **({"static": True} if sfx else {}), **kw)
        for ds, kw in {
            "mnist": dict(eta=0.02),
@@ -710,15 +711,15 @@ CONFIGS = {
     "g19_kad_c100f_puretgt": dict(model="ctx", dataset="cifar100f", schedule="local", buffer=1000,
                                   policy="random", batch_wake=16, cadence=1, batch_replay=16,
                                   hidden=(512, 256), active_frac=0.10, mask="refractory", opt="sgd",
-                                  eta=0.02, kp_adapt=0.25),
+                                  eta=0.02, kp_adapt=0.25, kp_adapt_mode="grad"),
     "g19_kad_c100_puretgt_static": dict(model="ctx", dataset="cifar100", schedule="local", buffer=1000,
                                         policy="random", batch_wake=16, cadence=1, batch_replay=16,
                                         hidden=(512, 256), active_frac=0.10, mask="refractory", opt="sgd",
-                                        eta=0.02, kp_adapt=0.25, static=True),
+                                        eta=0.02, kp_adapt=0.25, kp_adapt_mode="grad", static=True),
     "g19_kad_c100_puretgt": dict(model="ctx", dataset="cifar100", schedule="local", buffer=1000,
                                  policy="random", batch_wake=16, cadence=1, batch_replay=16,
                                  hidden=(512, 256), active_frac=0.10, mask="refractory", opt="sgd",
-                                 eta=0.02, kp_adapt=0.25),
+                                 eta=0.02, kp_adapt=0.25, kp_adapt_mode="grad"),
     # ---- phase 20: depth.  Does the local system survive stacking?  MNIST ladder d3/d4/d5
     # on the record substrate, adaptive controller vs the tuned fixed lambda at every depth
     # (claim: per-layer self-differentiation of the decay matters more the longer the KP chain).
@@ -764,6 +765,17 @@ CONFIGS = {
        for ds, d in (("c100", "cifar100"), ("c100f", "cifar100f"))
        for sk in ("_skip", "")
        for sfx in ("", "_static")},
+    # ---- 21 (review): end-to-end exactness of the isolation on the record configuration, with
+    # the free readout (default) and the isolated readout, plus the Adam-era 5% substrate the
+    # original "0.0 drift" check was logged on.
+    **{f"g21_diag_{name}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                batch_wake=16, cadence=1, batch_replay=16, mask="refractory",
+                                diag_drift=True, **kw)
+       for name, kw in {
+           "free": dict(hidden=(512, 256), active_frac=0.10, opt="sgd", eta=0.02, readout="free"),
+           "isolated": dict(hidden=(512, 256), active_frac=0.10, opt="sgd", eta=0.02, readout="isolated"),
+           "adam5": dict(hidden=(512, 256), active_frac=0.05, readout="free"),
+       }.items()},
     # 20C wave 2: the thin-signal axis wants capacity and replay volume, not depth --
     # width (more representational room at the same chain length), K=5000 (50/class instead
     # of 10), and their combination, all d2 + controller on the feature front.
@@ -835,7 +847,7 @@ def load_cifar10_feat(n_filters=256, patch=6, stride=2, seed=7):
     the training images (nothing is learned), rectified against a per-filter threshold, then
     quadrant-average-pooled to 2x2 x n_filters = 1024 dims.  The cortex under study still does
     all the learning; this is the retina/V1 it receives."""
-    cache = os.path.join(CIFAR_DIR, f"feat{n_filters}.npz")
+    cache = os.path.join(CIFAR_DIR, f"feat{n_filters}_trthr.npz")  # v2: train-only threshold
     if os.path.exists(cache):
         z = np.load(cache)
         Xtr, ytr, Xte, yte = z["Xtr"].astype(np.float32), z["ytr"], z["Xte"].astype(np.float32), z["yte"]
@@ -850,20 +862,20 @@ def load_cifar10_feat(n_filters=256, patch=6, stride=2, seed=7):
         W = W - W.mean(dim=(1, 2, 3), keepdim=True)
         W = W / (W.flatten(1).norm(dim=1).view(-1, 1, 1, 1) + 1e-6)
 
-        def feats(X):
+        def feats(X, thr=None):
             out = []
-            thr = None
             for i in range(0, len(X), 500):
                 z = torch.nn.functional.conv2d(torch.as_tensor(X[i:i + 500]), W, stride=stride)
-                if thr is None:
-                    thr = z.mean(dim=(0, 2, 3), keepdim=True)  # per-filter mean response
+                if thr is None:  # per-filter mean response: estimated once, on training images only
+                    thr = z.mean(dim=(0, 2, 3), keepdim=True)
                 z = torch.relu(z - thr)
                 p = z.shape[-1] // 2
                 q = torch.stack([z[:, :, :p, :p].mean((2, 3)), z[:, :, :p, p:].mean((2, 3)),
                                  z[:, :, p:, :p].mean((2, 3)), z[:, :, p:, p:].mean((2, 3))], 2)
                 out.append(q.reshape(len(z), -1).numpy())
-            return np.concatenate(out)
-        Xtr, Xte = feats(Xtr_r), feats(Xte_r)
+            return np.concatenate(out), thr
+        Xtr, thr = feats(Xtr_r)
+        Xte, _ = feats(Xte_r, thr)  # test images are rectified against the TRAINING threshold
         np.savez_compressed(cache, Xtr=Xtr.astype(np.float16), ytr=ytr, Xte=Xte.astype(np.float16), yte=yte)
         Xtr, Xte = Xtr.astype(np.float32), Xte.astype(np.float32)
     mu, sd = Xtr.mean(0), Xtr.std(0)
@@ -948,7 +960,31 @@ def split_tasks(cfg):
     return TASKS100 if n_classes(cfg) == 100 else TASKS
 
 
+VAL = False  # --val: evaluate on a held-out tenth of the training set instead of the test set
+
+
+def _val_split(X, y, frac=0.1, seed=1234):
+    """Stratified hold-out from the training set (fixed seed, independent of the run seed)."""
+    rng = np.random.RandomState(seed)
+    tr_idx, va_idx = [], []
+    for c in np.unique(y):
+        idx = np.where(y == c)[0]
+        rng.shuffle(idx)
+        n_va = int(round(frac * len(idx)))
+        va_idx.append(idx[:n_va])
+        tr_idx.append(idx[n_va:])
+    tr_idx, va_idx = np.concatenate(tr_idx), np.concatenate(va_idx)
+    return X[tr_idx], y[tr_idx], X[va_idx], y[va_idx]
+
+
 def load_data(cfg):
+    X, y, Xe, ye, shape = _load_data_raw(cfg)
+    if VAL:
+        X, y, Xe, ye = _val_split(X, y)
+    return X, y, Xe, ye, shape
+
+
+def _load_data_raw(cfg):
     if cfg.get("dataset") == "cifar100":
         X, y, Xe, ye = load_cifar100_gray()
         return X, y, Xe, ye, (32, 32)
@@ -1436,6 +1472,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     net.leak_moments = bool(cfg.get("leak_moments"))  # 12b: Adam state advances outside the mask
     net.anchor = cfg.get("anchor")  # 15B: (lam, mu) two-timescale synapses, None = off
     net.kp_adapt = cfg.get("kp_adapt")  # 19: adaptive KP decay (rho = decay-to-drive ratio)
+    net.kp_adapt_mode = cfg.get("kp_adapt_mode", "drive")  # "grad" = the v1 formula of the g19_kad_* cells
     net.front = front
     if sp:
         net.regrow = sp_rho
@@ -1447,6 +1484,11 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     long_use = [None] + [torch.full((s,), 0.5) for s in hidden]  # long-term use trace
     acc_matrix = np.full((len(tasks), len(tasks)), np.nan)
     replay_used, asleep_frac, eff_frac, t0 = 0, [], [], time.time()
+    # H4 diagnostic: how exact is the isolation end to end?  After every isolated replay update
+    # the waking batch is re-inferred under the suppression it was inferred with, and we log
+    # (max |d output|, fraction of predictions changed, fraction of samples whose top hidden
+    # code changed at all, per-layer fraction of asleep units the update woke).
+    diag, drift_log, sup_wake = bool(cfg.get("diag_drift")), [], None
     net.suppress = None
     gstep = 0  # waking batches since the start of the stream (cadence must not reset per epoch)
     Sr = [None] + [torch.zeros(s) for s in hidden]  # 10A: per-unit rest pressure (discharged by rest)
@@ -1461,6 +1503,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                 Xb, yb = Xt[idx], yt[idx]
                 net.training = True
                 x, a, eps = net.relax(Xb, onehot(yb), 0, 0.0)
+                sup_wake = net.suppress  # the suppression this batch was inferred under (H4 diag)
                 if mask_policy == "refractory":  # what fired now sits out the next competition
                     net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
                 elif mask_policy == "refr_soft":  # 12-E3: adaptation, not silencing -- rate halved
@@ -1572,7 +1615,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     # 12-E1 (the prior-art direction, implemented with our machinery): the WAKING
                     # update may not touch synapses whose both endpoints served the last replay
                     # batch -- protect the past while learning the present; replay is unmasked.
-                    net.local_update(x, a, eps, eta0 * batch_wake / 256, 1e-3, syn_mask=mirror_syn, bias_mask=mirror_bias)
+                    net.local_update(x, a, eps, eta0 * batch_wake / 256, 1e-3, syn_mask=mirror_syn, bias_mask=mirror_bias,
+                                     replay=False)  # a masked WAKING update: keep the waking bookkeeping
                 else:
                     net.local_update(x, a, eps, eta0 * batch_wake / 256, 1e-3)
                 buf.offer(Xb, yb, (eps[net.L] ** 2).sum(1))
@@ -1630,6 +1674,10 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                                     skip_syn[l] = 1.0 - post_awake[l][:, None] * pre_awake[l - 2][None, :]
                         asleep_frac.append([float(1 - awake[l].mean()) for l in range(1, net.L)])
                         net.training = False
+                        if diag:  # the waking batch's output before the isolated update
+                            sup_d, net.suppress = net.suppress, sup_wake
+                            x0, a0 = net.forward(Xb)
+                            net.suppress = sup_d
                         sup_saved, net.suppress = net.suppress, None  # replay competes freely
                         xr, ar, er = net.relax(Xr, onehot(yr), 0, 0.0)
                         net.suppress = sup_saved
@@ -1640,6 +1688,19 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                                          for l in range(1, net.L)])
                         net.local_update(xr, ar, er, eta0 * nrem_gain, 1e-3, syn_mask=syn, bias_mask=bias,
                                          skip_mask=skip_syn)
+                        if diag:  # ... and after it, under the same suppression
+                            sup_d, net.suppress = net.suppress, sup_wake
+                            x1, a1 = net.forward(Xb)
+                            net.suppress = sup_d
+                            flips = []
+                            for l in range(1, net.L):
+                                was_asleep = (a0[l] > 0).float().mean(0) == 0
+                                now_awake = (a1[l] > 0).float().mean(0) > 0
+                                flips.append(float((was_asleep & now_awake).float().sum() / max(1.0, float(was_asleep.float().sum()))))
+                            drift_log.append([float((x1[net.L] - x0[net.L]).abs().max()),
+                                              float((x1[net.L].argmax(1) != x0[net.L].argmax(1)).float().mean()),
+                                              float(((a1[net.L - 1] - a0[net.L - 1]).abs().max(1).values > 0).float().mean()),
+                                              *flips])
                         replay_used += 1
                         if mask_policy == "mirror":
                             r_act = [None] + [((ar[l] > 0).float().mean(0) > 0).float() for l in range(1, net.L)]
@@ -1694,7 +1755,10 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                synops=net.last_cost["synops"], gate=gate, theta=theta, rest_frac=(np.mean(asleep_frac, axis=0).tolist() if asleep_frac else None),
                ach_frac=(float(np.mean(ach_on)) if ach_on else None),
                kp_eff=([None if v is None else float(v) for v in net.kp_eff] if getattr(net, "kp_eff", None) else None),
-               gate_signal=(float(np.mean(gate_log)) if gate_log else None), fit_s=time.time() - t0)
+               gate_signal=(float(np.mean(gate_log)) if gate_log else None),
+               drift=(np.mean(drift_log, axis=0).tolist() if drift_log else None),
+               drift_p99=(float(np.percentile([d[0] for d in drift_log], 99)) if drift_log else None),
+               drift_n=len(drift_log), fit_s=time.time() - t0)
     print(f"  {config:26s} seed {seed}: overlap-in {out['overlap_in']:.2f}  dim {[round(v, 1) for v in out['dim']]}  "
           f"synops/sample {out['synops']:.0f}", flush=True)
     print(f"  {config:26s} seed {seed}: FINAL acc {final_acc:.4f}  forgetting {forgetting:.4f}  replay {replay_used}  "
@@ -1732,7 +1796,7 @@ def task_overlap(net, Xte, yte, tasks, thresh=0.05, layers=None):
 
 
 def part_path(config, seed):
-    return os.path.join(PARTS, f"{config}_s{seed}.pkl")
+    return os.path.join(PARTS, f"{'val_' if VAL else ''}{config}_s{seed}.pkl")
 
 
 def summary():
@@ -1764,17 +1828,32 @@ def main():
     ap.add_argument("--nrem-gain", type=float, default=3.0)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--summary", action="store_true")
+    ap.add_argument("--val", action="store_true", help="evaluate on a held-out 10%% of train (val_ checkpoints)")
     args = ap.parse_args()
+    global VAL
+    VAL = args.val
     if args.summary:
         summary()
         return
     os.makedirs(PARTS, exist_ok=True)
     configs = list(CONFIGS) if args.configs == ["all"] else args.configs
+    # the run-loop parameters travel with every checkpoint, so --resume can tell an old
+    # experiment from the current one instead of trusting the file name
+    # (the thread count is recorded but not compared: runs reproduce bitwise only at the same
+    # OMP_NUM_THREADS, since reduction order feeds k-WTA's discontinuity)
+    run_args = dict(epochs_per_task=args.epochs_per_task, batch=args.batch,
+                    nrem_batches=args.nrem_batches, nrem_gain=args.nrem_gain, val=VAL)
+    omp_threads = os.environ.get("OMP_NUM_THREADS")
     for seed in args.seeds:
         for config in configs:
             if args.resume and os.path.exists(part_path(config, seed)):
-                print(f"  skip {config} seed {seed}", flush=True)
-                continue
+                with open(part_path(config, seed), "rb") as f:
+                    old = pickle.load(f).get("run_args")
+                if old is not None and old != run_args:
+                    print(f"  WARNING {config} seed {seed}: checkpoint run args {old} != {run_args}; re-running", flush=True)
+                else:
+                    print(f"  skip {config} seed {seed}", flush=True)
+                    continue
             if CONFIGS[config].get("schedule") == "internal":
                 out = run_stream(config, seed, args.epochs_per_task, args.batch, args.nrem_gain)
             elif CONFIGS[config].get("schedule") == "local":
@@ -1783,6 +1862,8 @@ def main():
                                 cadence=c.get("cadence", 9))
             else:
                 out = run(config, seed, args.epochs_per_task, args.batch, args.nrem_batches, args.nrem_gain)
+            out["run_args"] = run_args
+            out["omp_threads"] = omp_threads
             tmp = part_path(config, seed) + ".tmp"
             with open(tmp, "wb") as f:
                 pickle.dump(out, f)

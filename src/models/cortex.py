@@ -531,14 +531,19 @@ class CortexNet:
 
     def local_update(self, x, a, eps, eta, weight_decay=0.0, eta_homeo=1e-2, tau=0.05,
                      eta_scale=1e-3, tau_slow=0.01, sign=1.0, first=1, tau_e=0.01,
-                     syn_mask=None, bias_mask=None, skip_mask=None):
+                     syn_mask=None, bias_mask=None, skip_mask=None, replay=None):
         """One local update from a settled state.  sign=-1 makes it anti-Hebbian (the dream
         phase); first=2 leaves the input synapses alone, which a dream has no input for.
         syn_mask / bias_mask (phase 8A, local sleep): per-layer masks over synapses (n_out x n_in)
         and neurons (n_out); only the masked ones move, and their optimiser state alone advances."""
         self.t += 1
         n = x[self.L].shape[0]
-        replay = syn_mask is not None
+        # `masked` governs WHICH synapses move; `replay` governs the bookkeeping that only
+        # waking updates may touch (burst baselines, decay controller, anchor, goodness).  They
+        # coincide for replay, but a masked WAKING update (the mirror ablation) must keep its
+        # waking bookkeeping, so the caller may set replay=False explicitly.
+        masked = syn_mask is not None
+        replay = masked if replay is None else replay
         for l in range(first, self.L + 1):
             e = eps[l] if l == self.L else self._burst(eps[l])  # output error is the loss itself
             if l < self.L and self.burst_baseline:
@@ -554,8 +559,8 @@ class CortexNet:
             wd = 0.0 if (l >= 2 and not self.transport) else weight_decay
             gW = e.T @ a[l - 1] / n - wd * self.W[l]
             gb = e.mean(0)
-            sm = syn_mask[l] if replay else None
-            bm = bias_mask[l] if replay else None
+            sm = syn_mask[l] if masked else None
+            bm = bias_mask[l] if masked else None
             dw = self._adam(self.W, gW, self.mW, self.vW, l, eta, mask=sm)
             self._adam(self.b, gb, self.mb, self.vb, l, eta, mask=bm)
             if l >= 2 and not self.transport:
@@ -572,15 +577,20 @@ class CortexNet:
                 # the alignment mechanism is untouched.
                 rho = getattr(self, "kp_adapt", None)
                 if rho:
-                    # v2: the drive is the mean |applied update| itself (optimiser-agnostic),
-                    # so the decay removes a fixed fraction rho of what learning actually adds.
+                    # "drive" (v2, canonical): the drive is the mean |applied update| itself
+                    # (optimiser-agnostic), so the decay removes a fixed fraction rho of what
+                    # learning actually adds.  "grad" (v1, kept so that the g19_kad_* cells stay
+                    # reproducible): eta times the mean |local gradient|.
+                    grad_mode = getattr(self, "kp_adapt_mode", "drive") == "grad"
+                    if grad_mode:  # v1 tracks |g| and multiplies by the CURRENT call's eta
+                        dw = float(gW.abs().mean())
                     if getattr(self, "g_ema", None) is None:
                         self.g_ema = [None] * (self.L + 1)
                         self.kp_eff = [None] * (self.L + 1)
                     if sign > 0 and not replay:
                         self.g_ema[l] = dw if self.g_ema[l] is None else 0.98 * self.g_ema[l] + 0.02 * dw
                     wmag = float(self.W[l].abs().mean()) + 1e-12
-                    kp_l = min(0.02, rho * (self.g_ema[l] or dw) / wmag)
+                    kp_l = min(0.02, rho * (eta if grad_mode else 1.0) * (self.g_ema[l] or dw) / wmag)
                     self.kp_eff[l] = kp_l if self.kp_eff[l] is None else 0.99 * self.kp_eff[l] + 0.01 * kp_l
                 else:
                     kp_l = self.kp_decay
@@ -593,7 +603,7 @@ class CortexNet:
                     # mask (frozen if the caller supplies none, preserving exact isolation).
                     gS = e.T @ a[l - 2] / n
                     ssm = (skip_mask[l] if skip_mask is not None
-                           else (torch.zeros_like(self.S[l]) if replay else None))
+                           else (torch.zeros_like(self.S[l]) if masked else None))
                     self._adam(self.S, gS, self.mS, self.vS, l, eta, mask=ssm)
                     self._adam(self.Bs, gS, self.mBs, self.vBs, l, eta, mask=ssm)
                     sshr = kp_l if ssm is None else kp_l * ssm

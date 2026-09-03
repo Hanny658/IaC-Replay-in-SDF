@@ -89,8 +89,11 @@ BASELINE_KEYS = {"LogReg": "logreg", "RandomForest": "rf", "MLP-BP": "mlp", "MLP
                  "MLP-FF": "ff", "MLP-CMA-ES": "cmaes", "TabPFN": "tabpfn"}
 
 
-def part_path(dname: str, variant: str) -> str:
-    return os.path.join(PARTS, f"{dname}_{variant}.pkl")
+def part_path(dname: str, variant: str, seed: int = 0) -> str:
+    # seed 0 keeps the historical name (every archived checkpoint was seed 0); other seeds
+    # get their own file instead of overwriting it
+    sfx = "" if seed == 0 else f"_seed{seed}"
+    return os.path.join(PARTS, f"{dname}_{variant}{sfx}.pkl")
 
 
 def run(dname: str, variant: str, seed: int) -> None:
@@ -99,10 +102,10 @@ def run(dname: str, variant: str, seed: int) -> None:
     t0 = time.time()
     r = evaluate(factory, ds, n_repeats=REPEATS[dname], seed=seed)
     os.makedirs(PARTS, exist_ok=True)
-    tmp = part_path(dname, variant) + ".tmp"
+    tmp = part_path(dname, variant, seed) + ".tmp"
     with open(tmp, "wb") as f:
         pickle.dump({"variant": variant, "result": r}, f)
-    os.replace(tmp, part_path(dname, variant))
+    os.replace(tmp, part_path(dname, variant, seed))
     print(f"   checkpointed {dname}/{variant} after {(time.time() - t0) / 60:.1f} min", flush=True)
 
 
@@ -155,7 +158,7 @@ def main() -> None:
     variants = list(VARIANTS) if args.variants == ["all"] else args.variants
     for dname in args.datasets:
         for variant in variants:
-            if args.resume and os.path.exists(part_path(dname, variant)):
+            if args.resume and os.path.exists(part_path(dname, variant, args.seed)):
                 print(f"   skip {dname}/{variant} (checkpointed)", flush=True)
                 continue
             run(dname, variant, args.seed)

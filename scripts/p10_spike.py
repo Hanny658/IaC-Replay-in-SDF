@@ -25,7 +25,7 @@ for config in ("static_loc16_refractory_br16_w512s5", "static_loc16_none_br16_w5
     print(f"  rate net: acc {out['final_acc']:.4f}  synops/sample {out['synops']:.0f}  "
           f"dense {dense_macs} MACs = {dense_macs * MAC_PJ / 1e3:.0f} nJ  "
           f"event-driven rate = {out['synops'] * MAC_PJ / 1e3:.0f} nJ", flush=True)
-    thr = calibrate_thresholds(net, RS.to_t(Xte[:2000]))
+    thr = calibrate_thresholds(net, RS.to_t(Xtr[:2000]))  # thresholds from TRAINING images
     for T_s in (4, 8, 16, 32):
         acc, spikes, events = spike_eval(net, Xte_raw, mu, sd, yte, T_s, thr, seed=0)
         print(f"  T_s={T_s:3d}: acc {acc:.4f}  spikes/sample {sum(spikes):.0f}  events {events:.0f}  "
