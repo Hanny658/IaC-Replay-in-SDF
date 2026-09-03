@@ -683,6 +683,30 @@ CONFIGS = {
            "c100f": dict(dataset="cifar100f", eta=0.02, tgt_scale=3.0),
        }.items()
        for sfx in ("", "_static")},
+    # 19 v2 (drive-based controller) image grid -- distinct names, formula lives in code
+    **{f"g19b_{ds}{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                               batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                               active_frac=0.10, mask="refractory", opt="sgd", kp_adapt=0.25,
+                               **({"static": True} if sfx else {}), **kw)
+       for ds, kw in {
+           "mnist": dict(eta=0.02),
+           "cifar": dict(dataset="cifar", eta=0.01),
+           "cifarf": dict(dataset="cifarf", eta=0.01),
+           "c100": dict(dataset="cifar100", eta=0.02),
+           "c100f": dict(dataset="cifar100f", eta=0.02),
+       }.items()
+       for sfx in ("", "_static")},
+    "g19_kadx_night": dict(model="ctx", buffer=1000, policy="random", replay="nrem",
+                           hidden=(512, 256), active_frac=0.10, kp_adapt=0.25),
+    **{f"g19_kadx_{name}{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                     batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                     active_frac=0.10, opt="sgd", eta=0.02, kp_adapt=0.25,
+                                     **({"static": True} if sfx else {}), **kw)
+       for name, kw in {
+           "anchor": dict(mask="refractory", anchor=(3e-4, 3e-4)),
+           "bout": dict(mask="refr_block", block=2048, gamma_p=0.5),
+       }.items()
+       for sfx in ("", "_static")},
     "g19_kad_c100f_puretgt": dict(model="ctx", dataset="cifar100f", schedule="local", buffer=1000,
                                   policy="random", batch_wake=16, cadence=1, batch_replay=16,
                                   hidden=(512, 256), active_frac=0.10, mask="refractory", opt="sgd",
@@ -1083,7 +1107,8 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
         net = CortexNet([front.n_dg if front else Xtr.shape[1], *hidden, NC], seed=seed, input_shape=None if front else ishape,
                         decoder=decoder, rem_neg=rem_neg, **dict(V7, active_frac=cfg.get("active_frac", V7["active_frac"]),
                                                                  conn_density=cfg.get("conn_density", V7["conn_density"]),
-                                                                 kp_decay=cfg.get("kp_decay", V7["kp_decay"])))
+                                                                 kp_decay=cfg.get("kp_decay", V7["kp_decay"]),
+                                                                 kp_adapt=cfg.get("kp_adapt")))
         net.front = front
     buf = Buffer(K, policy, g)
     tasks = [tuple(range(NC))] if static else split_tasks(cfg)

@@ -78,6 +78,10 @@ VARIANTS = {
     "v6_nokp": dict(dale_fb=True, kp_decay=0.0, kwta=False, homeo=False, adam_eps=1e-3),
     "v6_mirror": dict(dale_fb=True, kp_decay=0.0, kwta=False, homeo=False, adam_eps=1e-3, mirror=5),
     "v6_d2_e3": dict(dale_fb=True, kp_decay=1e-2, kwta=False, homeo=False, adam_eps=1e-3),
+    # ---- 19: adaptive KP decay (lambda = rho*eta*|g|/|W|); does it recover the 1e-2 that
+    # SUPPORT2 historically needed, with the same rho=0.25 used on every image dataset?
+    "v19_kpadapt": dict(dale_fb=True, kp_decay=1e-3, kwta=False, homeo=False, adam_eps=1e-3, kp_adapt=0.25),
+    "v19b_kpadapt": dict(dale_fb=True, kp_decay=1e-3, kwta=False, homeo=False, adam_eps=1e-3, kp_adapt=0.25),
 }
 REPEATS = {"nuh": 5, "wdbc": 5, "support2": 1}
 BASELINES = ["LogReg", "RandomForest", "MLP-BP", "MLP-PC", "MLP-FF", "MLP-CMA-ES", "TabPFN"]

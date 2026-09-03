@@ -56,6 +56,7 @@ class CortexNet:
                  dale=True, homeo="scaling", dale_fb=False, active_frac=0.25, ei_frac=0.8,
                  kappa=1.0, kp_decay=1e-2, opt="adam", adam_eps=1e-8, momentum=0.9,
                  conn_density=1.0, conn_mode="dist", conn_lambda=0.15, regrow=0.0, input_shape=None,
+                 kp_adapt=None,
                  burst_gate=False, burst_baseline=False, dream_batches=0, dream_eta=0.1,
                  sweep=False, burst_mult=False, spike_train=0, mirror=0,
                  decoder=False, rem_neg=0.0, rem_margin=1.0):
@@ -66,6 +67,7 @@ class CortexNet:
         self.act_name, self.transport, self.bounded = act, transport, bounded
         self.kwta, self.dale, self.homeo, self.dale_fb = kwta, dale, homeo, dale_fb
         self.active_frac, self.kappa, self.kp_decay = active_frac, kappa, kp_decay
+        self.kp_adapt = kp_adapt  # 19: decay-to-drive ratio rho (None = fixed kp_decay)
         # Optimiser for the local updates.  Adam's per-synapse normalisation is what blew up the
         # wide k-WTA runs: after weights and gradients had shrunk for thousands of steps, v was
         # tiny, and the discontinuous change of gradient when k-WTA winners flip gave g/sqrt(v)
@@ -462,18 +464,20 @@ class CortexNet:
         if self.opt == "sgd":  # heavy-ball momentum, no second-moment state
             if mask is None:
                 m[l] = self.momentum * m[l] + g
-                p[l] = p[l] + eta * m[l]
+                d = eta * m[l]
             else:
                 m[l] = torch.where(mask > 0, self.momentum * m[l] + g, m[l])
-                p[l] = p[l] + eta * mask * m[l]
-            return
+                d = eta * mask * m[l]
+            p[l] = p[l] + d
+            return float(d.abs().mean())
         if mask is None:
             m[l] = betas[0] * m[l] + (1 - betas[0]) * g
             v[l] = betas[1] * v[l] + (1 - betas[1]) * g * g
             mh = m[l] / (1 - betas[0] ** self.t)
             vh = v[l] / (1 - betas[1] ** self.t)
-            p[l] = p[l] + eta * mh / (vh.sqrt() + self.adam_eps)
-            return
+            d = eta * mh / (vh.sqrt() + self.adam_eps)
+            p[l] = p[l] + d
+            return float(d.abs().mean())
         on = mask > 0
         if getattr(self, "leak_moments", False):
             # 12b ablation: the weight change stays confined to the mask but the optimiser state
@@ -486,7 +490,9 @@ class CortexNet:
             v[l] = torch.where(on, betas[1] * v[l] + (1 - betas[1]) * g * g, v[l])
         mh = m[l] / (1 - betas[0] ** self.t)
         vh = v[l] / (1 - betas[1] ** self.t)
-        p[l] = p[l] + eta * mask * mh / (vh.sqrt() + self.adam_eps)
+        d = eta * mask * mh / (vh.sqrt() + self.adam_eps)
+        p[l] = p[l] + d
+        return float(d.abs().mean())
 
     def local_update(self, x, a, eps, eta, weight_decay=0.0, eta_homeo=1e-2, tau=0.05,
                      eta_scale=1e-3, tau_slow=0.01, sign=1.0, first=1, tau_e=0.01,
@@ -515,7 +521,7 @@ class CortexNet:
             gb = e.mean(0)
             sm = syn_mask[l] if replay else None
             bm = bias_mask[l] if replay else None
-            self._adam(self.W, gW, self.mW, self.vW, l, eta, mask=sm)
+            dw = self._adam(self.W, gW, self.mW, self.vW, l, eta, mask=sm)
             self._adam(self.b, gb, self.mb, self.vb, l, eta, mask=bm)
             if l >= 2 and not self.transport:
                 # Kolen-Pollack: B^{l-1} sees the same local product as W^l, and both carry the
@@ -531,14 +537,15 @@ class CortexNet:
                 # the alignment mechanism is untouched.
                 rho = getattr(self, "kp_adapt", None)
                 if rho:
+                    # v2: the drive is the mean |applied update| itself (optimiser-agnostic),
+                    # so the decay removes a fixed fraction rho of what learning actually adds.
                     if getattr(self, "g_ema", None) is None:
                         self.g_ema = [None] * (self.L + 1)
                         self.kp_eff = [None] * (self.L + 1)
-                    gmag = float(gW.abs().mean())
                     if sign > 0 and not replay:
-                        self.g_ema[l] = gmag if self.g_ema[l] is None else 0.98 * self.g_ema[l] + 0.02 * gmag
+                        self.g_ema[l] = dw if self.g_ema[l] is None else 0.98 * self.g_ema[l] + 0.02 * dw
                     wmag = float(self.W[l].abs().mean()) + 1e-12
-                    kp_l = min(0.02, rho * eta * (self.g_ema[l] or gmag) / wmag)
+                    kp_l = min(0.02, rho * (self.g_ema[l] or dw) / wmag)
                     self.kp_eff[l] = kp_l if self.kp_eff[l] is None else 0.99 * self.kp_eff[l] + 0.01 * kp_l
                 else:
                     kp_l = self.kp_decay

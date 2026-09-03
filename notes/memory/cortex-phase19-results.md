@@ -32,3 +32,23 @@ tgt_scale (never compose with target inflation).  Before promoting to manuscript
 6-seed hardening + tabular (run_bio SUPPORT2, does it recover ~1e-2?) + interaction checks
 with night/anchor paths.  Related: [[cortex-phase18-results]], [[cortex-phase17-results]],
 [[cortex-phase6-results]].
+
+## Final verdict (hardened + v2 + interactions, 2026-09-03)
+- v1 formula (rho*eta*|g|/|W|) at SIX seeds: MNIST 92.2+-0.4/95.2+-0.3, CIFAR 28.1+-0.9/
+  31.2+-0.8, cfeat 40.7+-1.2/43.5+-0.6, c100 3.7+-0.4/4.3+-0.2, c100f 5.1+-0.8.  Pattern:
+  seq -0.5..-1.4 vs tuned fixed lambda, static +0.5..+3.6, c100 3-5x.
+- v2 formula (drive-based, rho*|dW|/|W|, optimiser-agnostic; canonical in code): equivalent
+  within noise (seq slightly lower, MNIST static 96.1+-0.2 = best static ever incl. silent;
+  c100f 5.7/6.0 bests).  v2 did NOT fix tabular (lambda still ~1e-4): the SUPPORT2 1e-2 is
+  the CAPACITY-REGULARISER role of lambda, outside any drive-ratio controller's information
+  set.  v1 SUPPORT2 AUC = 0.867, v2 = 0.852 (fixed 1e-2: 0.895) -- predicted before data.
+- INTERACTIONS: night x controller CATASTROPHIC (60.2+-2.8 vs 90.9) -- the night's 3x-gain
+  updates are unmasked "waking" calls that inflate the drive EMA, lambda hits the clip and
+  erases day learning; same family as the tgt_scale artifact.  RULE: the controller must see
+  only unamplified waking updates (never compose with target scaling, night gains, or any
+  amplified stream not flagged as replay).  anchor/bout x controller compose fine with the
+  standard signature (seq -0.5..-0.8, static +1.1..+1.3 -> bout+ctrl static 96.0+-0.3).
+**Bottom line:** the controller is a one-knob replacement for per-dataset kp on the local-
+sleep system proper (waking + isolated replay), trading <=1 seq point for large static gains
+and unlocking c100; it does not subsume lambda's capacity-regulariser role and must not see
+amplified update streams.
