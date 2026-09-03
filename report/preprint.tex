@@ -64,7 +64,9 @@ shows that the remaining gap to backpropagation-with-replay is dense activation,
 assignment. Finally, a drive-referenced controller for the rule's synaptic decay --- one
 dimensionless constant in place of per-dataset tuning --- trades at most $1.4$ sequential
 points for the best static accuracies we measure and lifts the system onto 100-class streams
-and five-hidden-layer stacks that defeat every fixed decay. We provide exactness
+that defeat every fixed decay; with locally learned ResNet-style skip synapses the
+five-hidden-layer stack then matches the two-hidden-layer record on both axes. We provide
+exactness
 proofs for the isolation rule and release all code, checkpoints and diagnostics.
 \end{abstract}
 
@@ -799,8 +801,8 @@ Table~\ref{tab:controller} gives the cross-dataset verdict, with a consistent si
 the sequential axis the controller concedes $0.5$--$1.4$ points to the per-dataset tuned
 value; on every static axis it wins, by $+0.5$ to $+3.6$ --- the fixed decay had
 under-regularised every thick-signal regime all along --- and split-MNIST static
-$96.1\pm0.2$ is the best i.i.d.\ accuracy the substrate has produced under \emph{any}
-configuration, isolation-free included. On CIFAR-100 the controller lifts the system
+$96.1\pm0.2$ is the best i.i.d.\ accuracy the two-hidden-layer substrate has produced under
+\emph{any} configuration, isolation-free included. On CIFAR-100 the controller lifts the system
 $3$--$5\times$ over the manual rescue with no dataset-specific knob at all (floor-regime
 numbers, reported for ordering only: the strong BP+ER reference reaches $6$--$10\%$ there).
 The realised $\lambda_\ell$ (logged throughout) self-differentiates exactly as the tuning
@@ -811,7 +813,7 @@ frontier (Figure~\ref{fig:frontier}) the two controller points are non-dominated
 retire the silent mask and the per-batch novelty gate; the tuned fixed decay remains the
 sequential-axis record holder.
 
-\paragraph{Depth is the same boundary, and the controller crosses it.}
+\paragraph{Depth is the same boundary, and two mechanisms cross it.}
 The class count thins the error signal per class; depth attenuates it per layer --- the same
 starvation on a different axis. A depth ladder (three, four and five hidden layers,
 $512$--$256$--$128\ldots$, everything else the record configuration) makes the parallel
@@ -819,10 +821,19 @@ exact: under the tuned fixed decay the static axis dies at four hidden layers ($
 chance) and the sequential axis turns bimodal at five ($55.5\pm39.3$), while under the
 controller every cell stays alive and degrades gracefully --- $90.6\to90.0\to87.6$
 sequential, $95.6\to95.3\to91.8$ static --- with the realised $\lambda_\ell$ dropping to
-$3\times10^{-6}$ in the starved middle layers. A BP+ER reference at the same widths is
-depth-insensitive ($\approx\!88$--$89$ sequential throughout) but forgets $2$--$3\times$ more
-($F\approx13$--$14$ vs.\ $5$--$8$); the local system under the controller matches or exceeds
-it at every depth tested (three seeds).
+$3\times10^{-6}$ in the starved middle layers. The residual toll is then architectural, and
+a biologically unexceptional bypass removes it. ResNet-style skip synapses --- $S^\ell$
+carrying $a^{\ell-2}$ into each deep hidden layer, learned by the same local product with a
+Kolen--Pollack feedback twin and the shared per-layer decay, and replay-masked under the
+same pre-or-post-asleep rule --- restore the thick error path, and the five-hidden-layer
+system returns to the two-layer record on \emph{both} axes: $91.5\pm0.4$ sequential,
+$96.2\pm0.3$ static, with $96.3\pm0.2$ at depth four the best i.i.d.\ accuracy of the
+project. The bypass alone also rescues the fixed decay ($91.3/93.6$ at depth five), locating
+the depth collapse in error-path attenuation rather than decay mis-tuning per se; the
+controller still adds its usual static margin on top of the bypass. A BP+ER reference at
+the same widths is depth-insensitive ($\approx\!88$--$89$ sequential throughout) but forgets
+$2$--$3\times$ more ($F\approx13$--$14$ vs.\ $5$--$7$); the local system with skips and the
+controller beats it at every depth tested (three seeds).
 
 \paragraph{What the controller must never see, and what it does not do.}
 Composition follows one rule: the drive estimate must be fed only \emph{unamplified waking
@@ -881,9 +892,10 @@ their combination into concurrent, exactly isolated consolidation.
 refractory, utility exemption and synaptic anchoring are now all ruled out as routes past it
 (Section~\ref{sec:ablation}), leaving mastery-annealed rotation depth untried;
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
-(iv) convolutional stacks and residual-style skip routing --- the depth question itself is
-now answered (Section~\ref{sec:controller}: five hidden layers at graceful cost under the
-controller, collapse under every fixed decay), the routing is not;
+(iv) convolutional stacks --- depth and residual-style routing are answered
+(Section~\ref{sec:controller}: five hidden layers at the two-layer record with locally
+learned skips and the controller), convolution is not, and neither is the skip's effect on
+the 100-class thin-signal regime;
 (v) a throughput theory of the isolated channel predicting
 the required replay cadence from $\rho_\ell$, code overlap and the interference rate;
 (vi) the optimiser-dependence of the rotation--spiking calibration interaction, whose sign

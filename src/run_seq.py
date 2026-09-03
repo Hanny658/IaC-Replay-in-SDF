@@ -733,6 +733,25 @@ CONFIGS = {
        for sfx in ("", "_static")},
     **{f"g20_d{d}_bp_er": dict(model="bp", buffer=1000, policy="random", replay="er", hidden=h)
        for d, h in ((3, (512, 256, 128)), (4, (512, 256, 128, 128)), (5, (512, 256, 128, 128, 128)))},
+    # ---- phase 20B: ResNet-style skip synapses (S^l from a^{l-2}, feedback twin, shared kp_l)
+    # on the controller stack -- can the bypass buy back the residual depth toll?  Plus one
+    # mechanism probe: does the shortcut alone rescue fixed lambda's d5 collapse (error-path
+    # attenuation) or not (per-layer decay tuning)?
+    **{f"g20b_d{d}_skip{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                    batch_wake=16, cadence=1, batch_replay=16, hidden=h,
+                                    active_frac=0.10, mask="refractory", opt="sgd", eta=0.02,
+                                    kp_adapt=0.25, skip=True,
+                                    **({"static": True} if sfx else {}))
+       for d, h in ((4, (512, 256, 128, 128)), (5, (512, 256, 128, 128, 128)))
+       for sfx in ("", "_static")},
+    "g20b_d5_fixskip": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                            batch_wake=16, cadence=1, batch_replay=16,
+                            hidden=(512, 256, 128, 128, 128), active_frac=0.10,
+                            mask="refractory", opt="sgd", eta=0.02, skip=True),
+    "g20b_d5_fixskip_static": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                   batch_wake=16, cadence=1, batch_replay=16,
+                                   hidden=(512, 256, 128, 128, 128), active_frac=0.10,
+                                   mask="refractory", opt="sgd", eta=0.02, skip=True, static=True),
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -1388,7 +1407,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     input_shape=None if front else ishape,
                     **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"]),
                            opt=cfg.get("opt", V7.get("opt", "adam")),
-                           kp_decay=cfg.get("kp_decay", V7["kp_decay"])))
+                           kp_decay=cfg.get("kp_decay", V7["kp_decay"]),
+                           skip=cfg.get("skip", False)))
     net.leak_moments = bool(cfg.get("leak_moments"))  # 12b: Adam state advances outside the mask
     net.anchor = cfg.get("anchor")  # 15B: (lam, mu) two-timescale synapses, None = off
     net.kp_adapt = cfg.get("kp_adapt")  # 19: adaptive KP decay (rho = decay-to-drive ratio)
@@ -1578,6 +1598,12 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                             else:
                                 allowed = 1.0 - post_awake[l][:, None] * pre_awake[l - 1][None, :]
                                 syn.append(allowed); bias.append(1.0 - post_awake[l])
+                        skip_syn = None
+                        if any(s is not None for s in net.S):  # 20B: same pre-or-post-asleep rule
+                            skip_syn = [None] * (net.L + 1)
+                            for l in range(3, net.L):
+                                if net.S[l] is not None:
+                                    skip_syn[l] = 1.0 - post_awake[l][:, None] * pre_awake[l - 2][None, :]
                         asleep_frac.append([float(1 - awake[l].mean()) for l in range(1, net.L)])
                         net.training = False
                         sup_saved, net.suppress = net.suppress, None  # replay competes freely
@@ -1588,7 +1614,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                         eff_frac.append([float(((1 - awake[l]) * ((ar[l] > 0).float().mean(0) > 0).float()).sum()
                                                / max(1.0, float(((ar[l] > 0).float().mean(0) > 0).float().sum())))
                                          for l in range(1, net.L)])
-                        net.local_update(xr, ar, er, eta0 * nrem_gain, 1e-3, syn_mask=syn, bias_mask=bias)
+                        net.local_update(xr, ar, er, eta0 * nrem_gain, 1e-3, syn_mask=syn, bias_mask=bias,
+                                         skip_mask=skip_syn)
                         replay_used += 1
                         if mask_policy == "mirror":
                             r_act = [None] + [((ar[l] > 0).float().mean(0) > 0).float() for l in range(1, net.L)]

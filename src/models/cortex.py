@@ -56,7 +56,7 @@ class CortexNet:
                  dale=True, homeo="scaling", dale_fb=False, active_frac=0.25, ei_frac=0.8,
                  kappa=1.0, kp_decay=1e-2, opt="adam", adam_eps=1e-8, momentum=0.9,
                  conn_density=1.0, conn_mode="dist", conn_lambda=0.15, regrow=0.0, input_shape=None,
-                 kp_adapt=None,
+                 kp_adapt=None, skip=False,
                  burst_gate=False, burst_baseline=False, dream_batches=0, dream_eta=0.1,
                  sweep=False, burst_mult=False, spike_train=0, mirror=0,
                  decoder=False, rem_neg=0.0, rem_margin=1.0):
@@ -84,6 +84,22 @@ class CortexNet:
         # feedback synapses B^l carry eps^{l+1} down to layer l; same shape as W^{l+1}
         self.B = [None] + [torch.randn(sizes[l + 1], sizes[l], generator=g) / np.sqrt(sizes[l])
                            for l in range(1, self.L)]
+        # Phase 20B: ResNet-style skip synapses.  S^l carries a^{l-2} straight into layer l's
+        # basal drive (a lamina-skipping bypass projection, dense: bypass axons are long-range);
+        # Bs^l is its feedback twin, learned from the same local product with the same shared
+        # decay (Kolen-Pollack pairing), so the skip error path aligns without transport.
+        # Hidden targets only (l = 3..L-1); the readout keeps its single input.
+        self.skip = skip
+        self.S = [None] * (self.L + 1)
+        self.Bs = [None] * (self.L + 1)
+        if skip:
+            for l in range(3, self.L):
+                self.S[l] = torch.randn(sizes[l], sizes[l - 2], generator=g) / np.sqrt(sizes[l - 2])
+                self.Bs[l] = torch.randn(sizes[l], sizes[l - 2], generator=g) / np.sqrt(sizes[l - 2])
+            self.mS = [None if s is None else torch.zeros_like(s) for s in self.S]
+            self.vS = [None if s is None else torch.zeros_like(s) for s in self.S]
+            self.mBs = [None if s is None else torch.zeros_like(s) for s in self.S]
+            self.vBs = [None if s is None else torch.zeros_like(s) for s in self.S]
         # neuron types of the hidden layers (excitatory +1 / inhibitory -1), fixed at birth
         self.sign = [None]
         for l in range(1, self.L):
@@ -301,6 +317,12 @@ class CortexNet:
                 # types: an inhibitory neuron receives its feedback with flipped sign, as through
                 # a disinhibitory relay.  Without this B cannot align with W under Dale's law.
                 self.B[l - 1] = s * torch.clamp(s * self.B[l - 1], min=0.0)
+        for l in range(3, self.L):  # 20B: skip synapses obey the presynaptic types of layer l-2
+            if getattr(self, "S", None) is not None and self.S[l] is not None:
+                s2 = self.sign[l - 2][None, :]
+                self.S[l] = s2 * torch.clamp(s2 * self.S[l], min=0.0)
+                if self.dale_fb and not self.transport:
+                    self.Bs[l] = s2 * torch.clamp(s2 * self.Bs[l], min=0.0)
 
     # ---------------------------------------------------------------- inference
     def _g(self, l):
@@ -325,7 +347,12 @@ class CortexNet:
             dense += self.sizes[l - 1] * self.sizes[l]
             fan_out = self.sizes[l] if self.mask[l] is None else float(self.mask[l].sum(0).mean())
             synops += float((a[-1] != 0).float().sum(1).mean()) * fan_out
-            x.append(self.mu(l, a[-1]))
+            z = self.mu(l, a[-1])
+            if self.S[l] is not None:  # 20B: bypass drive from two layers below
+                z = z + a[l - 2] @ self.S[l].T
+                dense += self.sizes[l - 2] * self.sizes[l]
+                synops += float((a[l - 2] != 0).float().sum(1).mean()) * self.sizes[l]
+            x.append(z)
             a.append(self.act(l, x[-1]))
         self.last_cost = {"dense_macs": dense, "synops": synops,
                           "active": [float((a[l] != 0).float().mean()) for l in range(1, self.L)]}
@@ -349,6 +376,14 @@ class CortexNet:
         for l in range(self.L - 1, 0, -1):
             fb = self.W[l + 1] if self.transport else self.B[l]
             eps[l] = self.dact(l, x[l], a[l]) * ((self._g(l + 1) * self._err_up(eps, a, l)) @ fb)
+            if l + 2 < self.L and self.S[l + 2] is not None:
+                # 20B: the skip target's burst also reaches its bypass source, through Bs
+                e2 = self._burst(eps[l + 2])
+                if self.burst_mult:
+                    e2 = e2 * a[l + 2]
+                elif self.burst_gate:
+                    e2 = e2 * (a[l + 2] > 0).float()
+                eps[l] = eps[l] + self.dact(l, x[l], a[l]) * ((self._g(l + 2) * e2) @ self.Bs[l + 2])
         x[self.L] = Y
         return x, a, eps
 
@@ -496,7 +531,7 @@ class CortexNet:
 
     def local_update(self, x, a, eps, eta, weight_decay=0.0, eta_homeo=1e-2, tau=0.05,
                      eta_scale=1e-3, tau_slow=0.01, sign=1.0, first=1, tau_e=0.01,
-                     syn_mask=None, bias_mask=None):
+                     syn_mask=None, bias_mask=None, skip_mask=None):
         """One local update from a settled state.  sign=-1 makes it anti-Hebbian (the dream
         phase); first=2 leaves the input synapses alone, which a dream has no input for.
         syn_mask / bias_mask (phase 8A, local sleep): per-layer masks over synapses (n_out x n_in)
@@ -552,6 +587,18 @@ class CortexNet:
                 shrink = kp_l if sm is None else kp_l * sm
                 self.W[l] = self.W[l] - shrink * self.W[l]
                 self.B[l - 1] = self.B[l - 1] - shrink * self.B[l - 1]
+                if self.S[l] is not None:
+                    # 20B: skip synapses learn the same gated product and share layer l's
+                    # kp_l; during replay they move only under their own pre-or-post-asleep
+                    # mask (frozen if the caller supplies none, preserving exact isolation).
+                    gS = e.T @ a[l - 2] / n
+                    ssm = (skip_mask[l] if skip_mask is not None
+                           else (torch.zeros_like(self.S[l]) if replay else None))
+                    self._adam(self.S, gS, self.mS, self.vS, l, eta, mask=ssm)
+                    self._adam(self.Bs, gS, self.mBs, self.vBs, l, eta, mask=ssm)
+                    sshr = kp_l if ssm is None else kp_l * ssm
+                    self.S[l] = self.S[l] - sshr * self.S[l]
+                    self.Bs[l] = self.Bs[l] - sshr * self.Bs[l]
         anc = getattr(self, "anchor", None)
         if anc and sign > 0 and not replay:
             # 15B: two-timescale synapses (Benna-Fusi 2016, minimal form).  Each synapse carries a
