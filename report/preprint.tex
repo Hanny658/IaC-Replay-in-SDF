@@ -833,7 +833,12 @@ the depth collapse in error-path attenuation rather than decay mis-tuning per se
 controller still adds its usual static margin on top of the bypass. A BP+ER reference at
 the same widths is depth-insensitive ($\approx\!88$--$89$ sequential throughout) but forgets
 $2$--$3\times$ more ($F\approx13$--$14$ vs.\ $5$--$7$); the local system with skips and the
-controller beats it at every depth tested (three seeds).
+controller beats it at every depth tested (three seeds). The two starvations are not
+interchangeable, however: on split CIFAR-100 depth is a net loss that skips only half refund
+(four hidden layers $1.9/1.6\to3.8/3.0$ with skips, against $5.7/6.0$ at two), whereas
+\emph{width} at the short chain length lifts the local record to $6.7\pm0.3/7.5\pm0.2$
+($1024$--$512$; a $5\times$ buffer adds nothing) --- the thin-signal regime wants capacity,
+not depth, and BP+ER's remaining lead there ($9.9\pm0.5$) comes with twice the forgetting.
 
 \paragraph{What the controller must never see, and what it does not do.}
 Composition follows one rule: the drive estimate must be fed only \emph{unamplified waking
@@ -894,8 +899,10 @@ refractory, utility exemption and synaptic anchoring are now all ruled out as ro
 (iii) the narrow-vs-wide substrate interaction of offline nights at tiny buffers;
 (iv) convolutional stacks --- depth and residual-style routing are answered
 (Section~\ref{sec:controller}: five hidden layers at the two-layer record with locally
-learned skips and the controller), convolution is not, and neither is the skip's effect on
-the 100-class thin-signal regime;
+learned skips and the controller; on 100-class streams width, not depth, is what pays),
+convolution and a learned front-end are not, and the static-axis wall of the 100-class
+regime ($6$--$7.5\%$ under every substrate change) says the front-end is the binding
+constraint there;
 (v) a throughput theory of the isolated channel predicting
 the required replay cadence from $\rho_\ell$, code overlap and the interference rate;
 (vi) the optimiser-dependence of the rotation--spiking calibration interaction, whose sign

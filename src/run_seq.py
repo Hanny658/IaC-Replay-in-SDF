@@ -752,6 +752,30 @@ CONFIGS = {
                                    batch_wake=16, cadence=1, batch_replay=16,
                                    hidden=(512, 256, 128, 128, 128), active_frac=0.10,
                                    mask="refractory", opt="sgd", eta=0.02, skip=True, static=True),
+    # ---- phase 20C: back to CIFAR-100 with depth + skips.  The class-thinning axis has no
+    # architectural rescue at d2 (no skip targets); the question is whether skip-enabled depth
+    # buys usable capacity there.  d4 without skip = the depth control.
+    **{f"g20c_{ds}_d4{sk}{sfx}": dict(model="ctx", dataset=d, schedule="local", buffer=1000,
+                                      policy="random", batch_wake=16, cadence=1, batch_replay=16,
+                                      hidden=(512, 256, 128, 128), active_frac=0.10,
+                                      mask="refractory", opt="sgd", eta=0.02, kp_adapt=0.25,
+                                      **({"skip": True} if sk else {}),
+                                      **({"static": True} if sfx else {}))
+       for ds, d in (("c100", "cifar100"), ("c100f", "cifar100f"))
+       for sk in ("_skip", "")
+       for sfx in ("", "_static")},
+    # 20C wave 2: the thin-signal axis wants capacity and replay volume, not depth --
+    # width (more representational room at the same chain length), K=5000 (50/class instead
+    # of 10), and their combination, all d2 + controller on the feature front.
+    **{f"g20c_c100f_{name}{sfx}": dict(model="ctx", dataset="cifar100f", schedule="local",
+                                       buffer=K, policy="random", batch_wake=16, cadence=1,
+                                       batch_replay=16, hidden=h, active_frac=0.10,
+                                       mask="refractory", opt="sgd", eta=0.02, kp_adapt=0.25,
+                                       **({"static": True} if sfx else {}))
+       for name, h, K in (("wide", (1024, 512), 1000),
+                          ("k5000", (512, 256), 5000),
+                          ("wide_k5000", (1024, 512), 5000))
+       for sfx in ("", "_static")},
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
