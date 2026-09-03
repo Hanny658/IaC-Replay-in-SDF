@@ -523,7 +523,26 @@ class CortexNet:
                 # converge on each other without either ever reading the other.
                 gB = e.T @ a[l - 1] / n
                 self._adam(self.B, gB, self.mB, self.vB, l - 1, eta, mask=sm)
-                shrink = self.kp_decay if sm is None else self.kp_decay * sm
+                # 19: adaptive KP decay -- lambda_l is a fixed fraction rho of the learning
+                # drive (eta * |g| / |W|), estimated from WAKING gradients only.  The decay can
+                # then never win the signal-vs-decay race that starves thin-signal regimes
+                # (phase 18), while thick-signal regimes get large lambda (fast alignment,
+                # strong regularisation) automatically.  W and B share the same lambda_l, so
+                # the alignment mechanism is untouched.
+                rho = getattr(self, "kp_adapt", None)
+                if rho:
+                    if getattr(self, "g_ema", None) is None:
+                        self.g_ema = [None] * (self.L + 1)
+                        self.kp_eff = [None] * (self.L + 1)
+                    gmag = float(gW.abs().mean())
+                    if sign > 0 and not replay:
+                        self.g_ema[l] = gmag if self.g_ema[l] is None else 0.98 * self.g_ema[l] + 0.02 * gmag
+                    wmag = float(self.W[l].abs().mean()) + 1e-12
+                    kp_l = min(0.02, rho * eta * (self.g_ema[l] or gmag) / wmag)
+                    self.kp_eff[l] = kp_l if self.kp_eff[l] is None else 0.99 * self.kp_eff[l] + 0.01 * kp_l
+                else:
+                    kp_l = self.kp_decay
+                shrink = kp_l if sm is None else kp_l * sm
                 self.W[l] = self.W[l] - shrink * self.W[l]
                 self.B[l - 1] = self.B[l - 1] - shrink * self.B[l - 1]
         anc = getattr(self, "anchor", None)

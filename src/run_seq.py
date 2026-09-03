@@ -668,6 +668,33 @@ CONFIGS = {
     **{f"c100{ftag}_bp_er{ktag}": dict(model="bp", dataset=ds, buffer=K, policy="random", replay="er", bp_lr=3e-4)
        for ftag, ds in (("", "cifar100"), ("f", "cifar100f"))
        for K, ktag in ((1000, "_1000"), (5000, "_5000"))},
+    # ---- phase 19: adaptive KP decay, one dimensionless rho across every dataset.
+    # Claim under test: the per-dataset kp tuning (1e-2 tabular / 1e-3 MNIST / 1e-4 CIFAR-100)
+    # is a signal-to-decay ratio in disguise; a fixed-ratio controller replaces it.
+    **{f"g19_kad_{ds}{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                  batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                  active_frac=0.10, mask="refractory", opt="sgd", kp_adapt=0.25,
+                                  **({"static": True} if sfx else {}), **kw)
+       for ds, kw in {
+           "mnist": dict(eta=0.02),
+           "cifar": dict(dataset="cifar", eta=0.01),
+           "cifarf": dict(dataset="cifarf", eta=0.01),
+           "c100": dict(dataset="cifar100", eta=0.02, tgt_scale=3.0),
+           "c100f": dict(dataset="cifar100f", eta=0.02, tgt_scale=3.0),
+       }.items()
+       for sfx in ("", "_static")},
+    "g19_kad_c100f_puretgt": dict(model="ctx", dataset="cifar100f", schedule="local", buffer=1000,
+                                  policy="random", batch_wake=16, cadence=1, batch_replay=16,
+                                  hidden=(512, 256), active_frac=0.10, mask="refractory", opt="sgd",
+                                  eta=0.02, kp_adapt=0.25),
+    "g19_kad_c100_puretgt_static": dict(model="ctx", dataset="cifar100", schedule="local", buffer=1000,
+                                        policy="random", batch_wake=16, cadence=1, batch_replay=16,
+                                        hidden=(512, 256), active_frac=0.10, mask="refractory", opt="sgd",
+                                        eta=0.02, kp_adapt=0.25, static=True),
+    "g19_kad_c100_puretgt": dict(model="ctx", dataset="cifar100", schedule="local", buffer=1000,
+                                 policy="random", batch_wake=16, cadence=1, batch_replay=16,
+                                 hidden=(512, 256), active_frac=0.10, mask="refractory", opt="sgd",
+                                 eta=0.02, kp_adapt=0.25),
     # ---- static axis: the buffer must not hurt i.i.d. learning
     "static_bp_none": dict(model="bp", static=True),
     "static_ctx_none": dict(model="ctx", static=True),
@@ -1324,6 +1351,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                            kp_decay=cfg.get("kp_decay", V7["kp_decay"])))
     net.leak_moments = bool(cfg.get("leak_moments"))  # 12b: Adam state advances outside the mask
     net.anchor = cfg.get("anchor")  # 15B: (lam, mu) two-timescale synapses, None = off
+    net.kp_adapt = cfg.get("kp_adapt")  # 19: adaptive KP decay (rho = decay-to-drive ratio)
     net.front = front
     if sp:
         net.regrow = sp_rho
@@ -1574,6 +1602,7 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                overlap_in=task_overlap(net, Xte, yte, tasks, layers=(0,))[0], dim=code_dim(net, Xte),
                synops=net.last_cost["synops"], gate=gate, theta=theta, rest_frac=(np.mean(asleep_frac, axis=0).tolist() if asleep_frac else None),
                ach_frac=(float(np.mean(ach_on)) if ach_on else None),
+               kp_eff=([None if v is None else float(v) for v in net.kp_eff] if getattr(net, "kp_eff", None) else None),
                gate_signal=(float(np.mean(gate_log)) if gate_log else None), fit_s=time.time() - t0)
     print(f"  {config:26s} seed {seed}: overlap-in {out['overlap_in']:.2f}  dim {[round(v, 1) for v in out['dim']]}  "
           f"synops/sample {out['synops']:.0f}", flush=True)
