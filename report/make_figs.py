@@ -54,7 +54,7 @@ for lab, cfg, mk, col in PTS:
                 lw=0, elinewidth=1.0, capsize=2, color=col, label=lab)
 night = stat("ctx_nrem_rand_1000")[0]
 ax.axhline(night, color=C["night"], lw=1, ls="--")
-ax.text(18760, night - 2.6, "offline night (480 batches)", color=C["night"], fontsize=6.5, ha="right")
+ax.text(1450, night + 1.1, "offline night (480 batches)", color=C["night"], fontsize=6.5, ha="left")
 ax.set_xscale("log"); ax.set_xlabel("replay batches during wake"); ax.set_ylabel("final accuracy (%)")
 ax.set_xticks([2e3, 5e3, 1e4, 2e4]); ax.set_xticklabels(["2k", "5k", "10k", "20k"])
 ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
