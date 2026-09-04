@@ -765,6 +765,31 @@ CONFIGS = {
        for ds, d in (("c100", "cifar100"), ("c100f", "cifar100f"))
        for sk in ("_skip", "")
        for sfx in ("", "_static")},
+    # ---- 22: is "stateless" literal?  Heavy-ball momentum is per-synapse state; the record
+    # cell with momentum 0 (pure SGD) over an eta sweep -- 0.2 matches the effective step
+    # eta/(1-beta) of the default, the rest brackets it.
+    **{f"g22_sgd0_e{tag}{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                     batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                     active_frac=0.10, mask="refractory", opt="sgd", momentum=0.0,
+                                     eta=eta, **({"static": True} if sfx else {}))
+       for tag, eta in (("02", 0.02), ("05", 0.05), ("1", 0.1), ("2", 0.2), ("4", 0.4))
+       for sfx in ("", "_static")},
+    # 22b: momentum 0 dies through the REPLAY step (3x eta raw, no momentum smoothing of the
+    # micro-batch noise: eta=0.2 diverges, eta=0.02 starves layer 2).  Bring the replay step
+    # back to the momentum-smoothed scale via nrem_gain and sweep the viable corner.
+    **{f"g22b_sgd0_e{et}_g{gt}{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                           batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                           active_frac=0.10, mask="refractory", opt="sgd", momentum=0.0,
+                                           eta=eta, nrem_gain=gain, **({"static": True} if sfx else {}))
+       for et, eta in (("1", 0.1), ("2", 0.2))
+       for gt, gain in (("01", 0.1), ("03", 0.3), ("1", 1.0))
+       if not (eta == 0.2 and gain == 1.0)
+       for sfx in ("", "_static")},
+    **{f"g22b_sgd0_e2_g03_kad{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                          batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                          active_frac=0.10, mask="refractory", opt="sgd", momentum=0.0,
+                                          eta=0.2, nrem_gain=0.3, kp_adapt=0.25, **({"static": True} if sfx else {}))
+       for sfx in ("", "_static")},
     # ---- 21 (review): end-to-end exactness of the isolation on the record configuration, with
     # the free readout (default) and the isolated readout, plus the Adam-era 5% substrate the
     # original "0.0 drift" check was logged on.
@@ -1468,7 +1493,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     **dict(V7, active_frac=af, conn_density=cfg.get("conn_density", V7["conn_density"]),
                            opt=cfg.get("opt", V7.get("opt", "adam")),
                            kp_decay=cfg.get("kp_decay", V7["kp_decay"]),
-                           skip=cfg.get("skip", False)))
+                           skip=cfg.get("skip", False),
+                           momentum=cfg.get("momentum", 0.9)))  # 22: 0 = truly stateless SGD
     net.leak_moments = bool(cfg.get("leak_moments"))  # 12b: Adam state advances outside the mask
     net.anchor = cfg.get("anchor")  # 15B: (lam, mu) two-timescale synapses, None = off
     net.kp_adapt = cfg.get("kp_adapt")  # 19: adaptive KP decay (rho = decay-to-drive ratio)

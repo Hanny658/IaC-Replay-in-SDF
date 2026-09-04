@@ -72,8 +72,9 @@ class CortexNet:
         # wide k-WTA runs: after weights and gradients had shrunk for thousands of steps, v was
         # tiny, and the discontinuous change of gradient when k-WTA winners flip gave g/sqrt(v)
         # steps an order of magnitude too large for hundreds of steps.  adam_eps caps that
-        # amplification; "sgd" (heavy-ball momentum) has no per-synapse state at all, which is
-        # also the more defensible biology.
+        # amplification; "sgd" is heavy-ball momentum: one per-synapse velocity and no
+        # second-moment state (momentum=0 is literally stateless, but the replay micro-batches
+        # then need the velocity's noise averaging replaced by a smaller replay step -- phase 22).
         self.opt, self.adam_eps, self.momentum = opt, adam_eps, momentum
 
         self.W, self.b = [None], [None]  # forward synapses, index 1..L
@@ -496,7 +497,7 @@ class CortexNet:
         """Local update through the optimiser.  With `mask` (same shape as the parameter) only the
         masked synapses move AND only their optimiser state advances, so an update confined to
         sleeping synapses cannot leak into waking ones through the momentum (phase 8A)."""
-        if self.opt == "sgd":  # heavy-ball momentum, no second-moment state
+        if self.opt == "sgd":  # heavy-ball: velocity m is per-synapse state, advanced only inside the mask
             if mask is None:
                 m[l] = self.momentum * m[l] + g
                 d = eta * m[l]

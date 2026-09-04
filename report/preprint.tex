@@ -59,7 +59,7 @@ while learning the present, as in null-space methods) costs fifteen points under
 machinery; masked replay is insensitive to replay batch size down to eight samples, whereas
 unmasked replay and offline nights degrade sharply at the same sizes. Rotation's i.i.d.\ price is governed by the substrate's activity fraction: at the $5\%$
 fraction the project inherited, novelty gates (masked Adam) or sleep-bout-committed gates
-(stateless SGD) were needed to refund it, whereas at the $10\%$ optimum the price shrinks to
+(heavy-ball SGD) were needed to refund it, whereas at the $10\%$ optimum the price shrinks to
 about a point and both gates become neutral --- the sparsity dial, not the gate, is the cure.
 On split CIFAR-10 the ordering of methods transfers and widens, and a substrate decomposition
 shows that the remaining gap to backpropagation-with-replay is dense activation, not credit
@@ -499,7 +499,7 @@ consolidation was an artefact of counting $256$-sample batches.
 \includegraphics[width=.48\linewidth]{figs/fig_batch.pdf}\hfill
 \includegraphics[width=.48\linewidth]{figs/fig_timing.pdf}
 \caption{\textbf{Left (isolation):} final split-MNIST accuracy vs.\ replay batch size
-(record substrate, stateless SGD). Masked refractory replay is insensitive down to $8$
+(record substrate, heavy-ball SGD). Masked refractory replay is insensitive down to $8$
 samples; unmasked, silent-masked and offline-night replay all degrade. \textbf{Right
 (timing):} accuracy vs.\ number of waking replay batches. Even trickles fail; clocked bursts
 recover most of the gap; pressure-triggered bursts (star) dominate at sparse budgets;
@@ -520,10 +520,16 @@ choice but a fifteen-point empirical effect ($20$ points, with high seed varianc
 $70.3\pm10.1$, at the historical $5\%$ fraction). (An earlier version of this cell ran with
 the burst-rate baseline inadvertently frozen during the masked waking update and read
 $85.0\pm2.0$; the corrected cell shares its bookkeeping with every other row.)
-Second, replacing masked Adam with \emph{stateless} heavy-ball SGD inside the same isolation
+Second, replacing masked Adam with heavy-ball SGD --- a single per-synapse velocity, no
+second-moment state --- inside the same isolation
 raises the ceiling: $\mathbf{92.7\pm0.3\%}$ sequential and $94.7\pm0.3\%$ static (six
 seeds; vs.\ $91.8\pm0.6/94.6\pm0.2$ for masked Adam; unmasked SGD control $87.0\pm1.1$).
-Carrying no state at all is simpler and better --- and closer to biology; the ablation in
+Carrying a single velocity and nothing else is simpler and better --- and closer to biology;
+carrying \emph{nothing} is not: with momentum zero the isolated replay micro-batches lose the
+velocity's noise averaging, activity collapses to chance at every learning rate unless the
+replay step is re-scaled by hand, and the best pure-SGD setting then trails by $2.8$
+sequential and $4.6$ static points ($89.9\pm0.3/90.1\pm0.2$; $91.7\pm0.2/91.4\pm0.0$ with
+the adaptive decay of Section~\ref{sec:controller}). The ablation in
 Section~\ref{sec:ablation} traces masked Adam's deficit to the confinement of its moments,
 which the exactness guarantee demands but accuracy, it turns out, does not. Third, \emph{soft}
 rotation (halving, rather than silencing, recent winners) loses where it matters
@@ -556,7 +562,7 @@ $29.5\pm2.8$). Under masked Adam, a relative-novelty/progress gate
 (Eqs.~\eqref{eq:nov}--\eqref{eq:prog}) removed the $5\%$ price with one setting across all
 four regimes; the full Adam-era gate study --- including why absolute thresholds provably
 cannot serve and why unit-level pressure gating only trades the axes --- is in
-Appendix~\ref{app:gates}. Under the stateless optimiser the gate had to be committed to bouts
+Appendix~\ref{app:gates}. Under heavy-ball SGD the gate had to be committed to bouts
 (Section~\ref{sec:ablation}); at the record fraction both cures become largely unnecessary
 --- the sparsity dial (Section~\ref{sec:dial}) shrinks the price at source.
 
@@ -589,12 +595,12 @@ regimes.
 
 \subsection{Energy}
 Converted to spiking inference ($T_s{=}8$; firing thresholds calibrated on training images),
-the default system (always-on rotation, stateless SGD, record fraction; rate accuracy
+the default system (always-on rotation, heavy-ball SGD, record fraction; rate accuracy
 $94.7\%$ on the measured seed) runs at $93.8\%$ and
 $119$\,nJ/sample vs.\ $2461$\,nJ for dense rate inference ($20.7\times$) and $526$\,nJ for
 event-driven rate inference ($4.4\times$), improving further with the time budget ($94.4\%$
 at $T_s{=}16$, $241$\,nJ). The calibration interaction we reported for the earlier Adam stack
-has \emph{reversed sign} under the stateless optimiser: the rotation-trained networks are now
+has \emph{reversed sign} under heavy-ball SGD: the rotation-trained networks are now
 the calibration-robust ones (accuracy monotone in $T_s$), while the rotation-free control
 degrades beyond $T_s{=}8$ ($94.6\to90.1$ at $T_s{=}32$) --- consistent with rotation shaping
 sparser codes (final hidden dimensionality $12.7$ vs.\ $28.8$; $67$ vs.\ $82$ spikes per
@@ -616,7 +622,7 @@ utility-exempt rotation as a route past the bout gate (all Section~\ref{sec:abla
 \label{sec:ablation}
 
 The system under test is a conjunction of five ingredients: a biologically constrained
-substrate, the exact isolation mask \eqref{eq:mask}, the refractory rotation, a stateless
+substrate, the exact isolation mask \eqref{eq:mask}, the refractory rotation, a heavy-ball
 optimiser, and the progress-keyed gate \eqref{eq:prog}. This section removes or replaces one ingredient of the consolidation mechanism at a time
 (Table~\ref{tab:ablation}). The substrate beneath it was fixed by earlier ablation ladders;
 its full cost accounting --- $1.2$ points below a dense backpropagation MLP at $4\times$
@@ -639,7 +645,7 @@ combination not applicable. Bold: column best. Headline rows carry six seeds; th
 \toprule
 Variant & Sequential & i.i.d.\ (static) \\
 \midrule
-\multicolumn{3}{@{}l}{\emph{Full system and single knockouts (stateless SGD, $\eta=0.02$)}}\\
+\multicolumn{3}{@{}l}{\emph{Full system and single knockouts (heavy-ball SGD, $\eta=0.02$)}}\\
 full: exact isolation $+$ rotation $+$ per-batch progress gate & $89.7\pm1.4$ & $95.3\pm0.2$ \\
 \quad the same gate committed to bouts (min on-duration $2048$) & $92.3\pm0.2$ & $94.9\pm0.3$ \\
 $-$ gate (rotation always on; \emph{the default}) & $\mathbf{92.7\pm0.3}$ & $94.7\pm0.3$ \\
@@ -657,6 +663,7 @@ offline night instead of concurrent replay, same substrate & $90.9\pm3.2$ & --- 
 \quad the same night on its preferred narrow substrate & $90.7\pm0.4$ & --- \\
 mirror direction: protect the past (Section~\ref{sec:direction}) & $77.9\pm1.6$ & $92.3\pm0.2$ \\
 soft rotation: gain $0.5$ instead of $0$ & $90.2\pm0.4$ & $86.4\pm0.3$ \\
+momentum $0$ (pure SGD; $\eta$ and replay gain re-tuned, else chance) & $89.9\pm0.3$ & $90.1\pm0.2$ \\
 \midrule
 \multicolumn{3}{@{}l}{\emph{External references}}\\
 unmasked ER at the same budget (Adam) & $89.7\pm1.1$ & $95.4\pm0.3$ \\
@@ -667,7 +674,7 @@ backprop ($+$ER sequential; plain static), dense & $89.3\pm0.8$ & $97.5\pm0.0$ \
 
 \subsection{Reading the component table}
 Read top-down, the first block prices each ingredient by what its removal costs the
-sequential axis under the stateless optimiser: rotation is worth $+3.9$ points ($92.7$ vs.\
+sequential axis under heavy-ball SGD: rotation is worth $+3.9$ points ($92.7$ vs.\
 $88.8$ for the pre-silent channel alone), isolation $+5.7$ with a four-fold variance reduction
 ($92.7\pm0.3$ vs.\ $87.0\pm1.1$), and replay is worth everything ($19.6$ is the forgetting
 floor). The static column identifies who pays: rotation is the only statically costly
@@ -677,7 +684,7 @@ historical $5\%$ fraction are here \emph{neutral}: the bout-committed gate trade
 $-0.4$ sequential for $+0.2$ static ($92.3\pm0.2/94.9\pm0.3$), the per-batch gate is erratic
 ($89.7\pm1.4/95.3\pm0.2$), and the two-timescale anchor no longer adds anything
 ($92.7\pm0.4/94.6\pm0.3$). Their mechanisms remain instructive --- at $5\%$ the per-batch
-gate's flicker destroyed the stateless gain, episode commitment (the sleep--wake flip-flop's
+gate's flicker destroyed heavy-ball SGD's gain, episode commitment (the sleep--wake flip-flop's
 consolidated-bout structure \citep{saper2005}) repaired it, and bout-length and OFF-refractory
 controls located the residual price in the rotation of settled coalitions itself --- and that
 full study is preserved in Appendix~\ref{app:probes} and the $5\%$ grids; but at the record
@@ -689,14 +696,16 @@ surprise. Propositions~\ref{prop:pre}--\ref{prop:post} require Adam's moments to
 only inside the mask: state advancing outside re-injects the replay gradient into awake
 synapses through the next unmasked waking step, and output-neutrality is lost. Empirically,
 however, the leak \emph{helps} sequentially --- $92.6\pm0.3$ vs.\ $91.8\pm0.6$. Exact state
-confinement, not isolation, is what holds masked Adam below the stateless optimiser: moments
+confinement, not isolation, is what holds masked Adam below heavy-ball SGD: moments
 frozen outside each batch's mask go stale across a unit's on/off cycles \citep{bricken2023},
-and either remedy --- letting the state track every gradient (surrendering the guarantee) or
-carrying no state at all --- recovers most of the gap. Statelessness is the only choice that
-keeps the guarantee and the accuracy at once.
+and either remedy --- letting the moments track every gradient (surrendering the guarantee)
+or replacing two moments by one velocity --- recovers most of the gap. The velocity is the
+least state that keeps the guarantee and the accuracy at once: it advances only inside the
+mask, and removing it as well (momentum zero, Table~\ref{tab:ablation}) costs $2.8$/$4.6$
+points once the replay step has been re-scaled to survive at all.
 
 One budget note completes the block: half the cadence with doubled batches costs $1.3$
-($91.4\pm0.3$) --- the stateless system prefers consolidation to run continuously.
+($91.4\pm0.3$) --- the system prefers consolidation to run continuously.
 
 \subsection{Two probes of the residual static price}
 At the historical $5\%$ fraction, the OFF-refractory null located the bout gate's residual
@@ -713,8 +722,8 @@ compose sub-additively. Figure~\ref{fig:frontier} draws the operating frontier.
 \begin{figure}[t]
 \centering
 \includegraphics[width=.6\linewidth]{figs/fig_frontier.pdf}
-\caption{\textbf{The operating frontier} at the record fraction under the stateless
-optimiser: split-MNIST sequential accuracy against i.i.d.\ static accuracy (headline points
+\caption{\textbf{The operating frontier} at the record fraction under heavy-ball
+SGD: split-MNIST sequential accuracy against i.i.d.\ static accuracy (headline points
 six seeds). Blue: non-dominated configurations; purple: dominated ones; small grey dots: the
 historical $5\%$ family the project inherited, entirely inside the new frontier. The two
 adaptive-$\lambda$ points (Section~\ref{sec:controller}) extend the static side of the
@@ -930,7 +939,7 @@ constraint there;
 (v) a throughput theory of the isolated channel predicting
 the required replay cadence from $\rho_\ell$, code overlap and the interference rate;
 (vi) the optimiser-dependence of the rotation--spiking calibration interaction, whose sign
-reverses between the Adam and the stateless stack; (vii) a drive estimate that survives
+reverses between the Adam and the heavy-ball stack; (vii) a drive estimate that survives
 amplified update streams (inflated targets, night gains), which currently defeat the
 controller's clip.
 
@@ -1118,7 +1127,7 @@ never becomes predictable, so rotation shuts off exactly where it helps). The pr
 $27.2\pm0.7$ and static $25.3\pm1.0$ (both $=$ always-on rotation), split-MNIST $90.4\pm0.9$,
 i.i.d.\ MNIST $94.3\pm0.2$ at $\gamma{=}0.5$ --- retaining a residual $0.7$-point static cost
 relative to the pure novelty gate on easy streams, the price of the unmastered clause. (All
-gate numbers in this subsection use masked Adam; under the stateless optimiser the gate must be
+gate numbers in this subsection use masked Adam; under heavy-ball SGD the gate must be
 committed to minimum-duration bouts --- Section~\ref{sec:ablation}.)
 
 \begin{figure}[t]
@@ -1173,7 +1182,7 @@ either density or an offline window.
 \section{Learning-rate sensitivity}
 \label{app:eta}
 
-The stateless comparison invites an objection: SGD's $\eta$ was chosen, Adam's was left at its
+The optimiser comparison invites an objection: SGD's $\eta$ was chosen, Adam's was left at its
 default. A two-sided sweep dissolves it. Under always-on rotation, SGD holds a sequential
 plateau over $\eta\in[0.01,0.02]$ ($91.9\pm0.5$/$92.0\pm0.6$) and a static plateau over
 $[0.02,0.05]$ ($93.3$--$93.7$), decaying gracefully outside ($86.3$/$89.2$ at $\eta{=}0.1$);
@@ -1181,7 +1190,7 @@ $\eta{=}0.02$ is the joint optimum. Masked Adam, swept over a tenfold range, has
 sequential optimum exactly at the default ($90.8\pm0.1$ at $10^{-3}$; $88.6$ at
 $3{\cdot}10^{-4}$, $88.9$ at $3{\cdot}10^{-3}$) --- the comparison of
 Section~\ref{sec:direction} was already at Adam's best --- and no Adam setting reaches the
-stateless joint point ($3{\cdot}10^{-3}$ buys $93.6$ static at a three-point sequential cost).
+heavy-ball joint point ($3{\cdot}10^{-3}$ buys $93.6$ static at a three-point sequential cost).
 Unmasked SGD is poor and unstable at \emph{every} rate ($84$--$88$, seed deviations
 $1.8$--$4.1$, three- to eight-fold those of the masked runs), making the stabilising role of
 isolation a cross-$\eta$ fact. The bout-committed gate inherits the plateau, and the optimum
