@@ -71,7 +71,7 @@ for d, cfg, col in ((2, "g19b_mnist", "#9ecae1"), (3, "g20_d3_kad", "#6baed6"), 
         ax.semilogy(np.arange(2, 2 + len(mean)), mean, marker="s", ms=3, lw=1.1, color=col, label=f"{d} hidden")
 ax.set_xlabel("layer $\\ell$ (decay applies from $\\ell=2$)"); ax.set_ylabel("realised $\\lambda_\\ell$")
 ax.axhline(1e-3, color=C["fix"], lw=0.8, ls="--"); ax.text(2.1, 1.25e-3, "fixed $\\lambda=10^{-3}$", fontsize=6, color=C["fix"])
-ax.set_title("controller's per-layer decay"); ax.legend(loc="lower right", frameon=False, ncol=2)
+ax.set_ylim(1e-6, 3e-3); ax.set_title("controller's per-layer decay"); ax.legend(loc="upper center", bbox_to_anchor=(0.5, 0.86), frameon=False, ncol=2)
 fig.tight_layout(w_pad=1.0)
 fig.savefig(os.path.join(FIGS, "fig_depth.pdf")); fig.savefig(os.path.join(FIGS, "fig_depth.png"), dpi=200)
 print("fig_depth written")
