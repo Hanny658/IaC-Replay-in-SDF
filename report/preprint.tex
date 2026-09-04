@@ -510,7 +510,7 @@ stream; local sleep consolidates during it, in replay bursts confined to asleep 
 \draw[->] (awake) -- (mask); \draw[->] (mask) -- (step);
 \draw[->] (buf) -- (rep); \draw[->] (rep) -- (step.north west);
 \draw[->] (wake) -- (buf);
-\draw[->] (fwd.south) -- node[left, font=\tiny, align=right, pos=0.55]{wake update:\\ unmasked} (step.north);
+\draw[->] (fwd.south) -- ++(0,-0.42) -| node[pos=0.22, above, font=\tiny]{wake update: unmasked} ([xshift=-0.5cm]step.north);
 \draw[->, dashed] (press) -- (step);
 \draw[->, dashed] (rot.north) |- ++(0,0.45) -| node[pos=0.25, above, font=\tiny]{next batch} (fwd.north);
 \draw[->, dashed] (mask.east) -| (ro.north);
