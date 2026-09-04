@@ -800,8 +800,13 @@ $\eta\in[0.01,0.02]$ ($91.9\pm0.5$/$92.0\pm0.6$) and a static plateau over $[0.0
 swept over a tenfold range, has its sequential optimum at the default ($90.8\pm0.1$ at
 $10^{-3}$; $88.6$ at $3{\cdot}10^{-4}$, $88.9$ at $3{\cdot}10^{-3}$), and no Adam setting
 reaches the heavy-ball joint point. Unmasked SGD is poor and unstable at every rate ($84$--$88$,
-seed deviations $1.8$--$4.1$). \textcolor{orange!80!black}{[The same two-sided sweep at the
-$10\%$ record fraction is being completed and will replace this paragraph.]}
+seed deviations $1.8$--$4.1$). The same two-sided sweep at the $10\%$ record fraction (three
+seeds) gives the same verdict: heavy-ball SGD holds $92.2\pm0.7/93.3\pm0.2$ at $\eta{=}0.01$,
+$92.7\pm0.3/94.7\pm0.3$ at $0.02$ (the joint optimum) and $91.5\pm0.6/94.7\pm0.3$ at $0.05$,
+decaying at $0.005$ ($91.3/91.3$) and destabilising at $0.1$ ($79.5\pm17.3$); masked Adam has
+its optimum at the default ($91.8\pm0.6/94.6\pm0.2$ at $10^{-3}$; $89.9/89.9$ at
+$3{\cdot}10^{-4}$, $90.9/94.3$ at $3{\cdot}10^{-3}$). The optimiser comparison of
+Table~\ref{tab:ablation} is made at each optimiser's best rate.
 
 \section{Momentum, exactness and other negative results}
 \label{app:negative}

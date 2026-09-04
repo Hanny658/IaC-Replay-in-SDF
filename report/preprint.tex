@@ -1203,7 +1203,14 @@ either density or an offline window.
 \label{app:eta}
 
 The optimiser comparison invites an objection: SGD's $\eta$ was chosen, Adam's was left at its
-default. A two-sided sweep dissolves it. Under always-on rotation, SGD holds a sequential
+default. A two-sided sweep dissolves it. At the $10\%$ record fraction (three seeds), heavy-ball
+SGD under always-on rotation holds $92.2\pm0.7/93.3\pm0.2$ at $\eta{=}0.01$,
+$92.7\pm0.3/94.7\pm0.3$ at $0.02$ (the joint optimum) and $91.5\pm0.6/94.7\pm0.3$ at $0.05$,
+decaying at $0.005$ ($91.3/91.3$) and destabilising at $0.1$ ($79.5\pm17.3$), while masked
+Adam has its optimum at the default ($91.8\pm0.6/94.6\pm0.2$ at $10^{-3}$; $89.9/89.9$ at
+$3{\cdot}10^{-4}$, $90.9/94.3$ at $3{\cdot}10^{-3}$): the comparison of
+Table~\ref{tab:ablation} is at each optimiser's best rate. The original sweep, at the $5\%$
+fraction of the earlier phases, told the same story. There, under always-on rotation, SGD holds a sequential
 plateau over $\eta\in[0.01,0.02]$ ($91.9\pm0.5$/$92.0\pm0.6$) and a static plateau over
 $[0.02,0.05]$ ($93.3$--$93.7$), decaying gracefully outside ($86.3$/$89.2$ at $\eta{=}0.1$);
 $\eta{=}0.02$ is the joint optimum. Masked Adam, swept over a tenfold range, has its

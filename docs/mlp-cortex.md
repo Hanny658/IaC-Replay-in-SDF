@@ -408,6 +408,19 @@ bout+ctrl 静态 96.0±0.3）。
   现记录 `omp_threads`。本轮 mirror/diag 格在 OMP=2、v1 cfeat 格在 OMP=2–3 下产生,统计上等价
   但不与 OMP=4 逐位对应。
 
+### 手稿评审轮 + workshop 版（2026-09-04）
+
+外部手稿评审（`report/critic.md` 第二部分）逐条核实后几乎全部接受并落地：式 (4) 转置
+（B^ℓ∈ℝ^{n_{ℓ+1}×n_ℓ}）、命题 2 加 Δb、能耗常数改引 Horowitz 2014（0.9/3.7 pJ 45 nm FP32）
+并改称"理想化算术能耗代理"、补 Rueckauer 2017 / Whittington 2017 / Vitter 1985、
+four-way、"inconclusive"、3.7 倍标准差、控制器 2.6–5×、"no dataset-specific decay coefficient"、
+结论限定、验证集范围限定、R 定义统一为样本数、生物类比软化（tonic ↔ soft rotation 一致化）、
+实验日志腔清理；fig_timing 刻度/标注修复。**10% 底座 η 扫描（g23,36 运行）**证实 5% 结论：
+SGD η=0.02 联合最优（0.01: 92.2/93.3；0.05: 91.5/94.7；0.1 崩 79.5±17）,Adam 默认 1e-3
+即最优（3e-4: 89.9/89.9；3e-3: 90.9/94.3）。**Workshop 版** `report/workshop/cl4fmagents.tex`：
+CL4FMAgents @ NeurIPS 2026（8 页正文、双盲、非存档、截止 9/7 AoE）,NeurIPS 2026 样式,
+面向智能体的叙事,主线保留、旁线与负结果全部入附录,新增控制器×深度图（`make_fig_depth.py`）。
+
 ### 第 22 期（"stateless" 是否字面成立：momentum=0 的纯 SGD,2026-09-04,66 运行）
 
 **动机**：手稿 18 处 "stateless SGD",但 heavy-ball 的速度缓冲是每突触状态（只是无二阶矩）。

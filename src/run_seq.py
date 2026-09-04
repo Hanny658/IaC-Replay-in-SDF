@@ -790,6 +790,18 @@ CONFIGS = {
                                           active_frac=0.10, mask="refractory", opt="sgd", momentum=0.0,
                                           eta=0.2, nrem_gain=0.3, kp_adapt=0.25, **({"static": True} if sfx else {}))
        for sfx in ("", "_static")},
+    # ---- 23 (manuscript review): the learning-rate sweep on the RECORD 10% substrate (the
+    # phase-14 sweep was at 5%); eta=0.02 SGD and 1e-3 Adam cells already exist.
+    **{f"{pre}g23_sgd_refr_e{tag}_s10": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                             batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.10,
+                                             mask="refractory", opt="sgd", eta=e, **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for tag, e in (("005", 0.005), ("01", 0.01), ("05", 0.05), ("1", 0.1))},
+    **{f"{pre}g23_adam_refr_e{tag}_s10": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                              batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256), active_frac=0.10,
+                                              mask="refractory", eta=e, **({"static": True} if pre else {}))
+       for pre in ("", "static_")
+       for tag, e in (("3e4", 3e-4), ("3e3", 3e-3))},
     # ---- 21 (review): end-to-end exactness of the isolation on the record configuration, with
     # the free readout (default) and the isolated readout, plus the Adam-era 5% substrate the
     # original "0.0 drift" check was logged on.
