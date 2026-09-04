@@ -47,12 +47,18 @@ PTS = [  # label, cfg, marker, color
 ]
 for lab, cfg, mk, col in PTS:
     m, e, r = stat(cfg)
-    ax.errorbar(r if r == r else 18760, m, e, marker=mk, ms=6 if mk == "*" else 4,
+    if not r == r or r < 1:  # surprise triggering never fires: no replay events at all
+        r = 1500
+        ax.annotate("0 events", (r, m), textcoords="offset points", xytext=(6, -3), fontsize=6.3, color=col)
+    ax.errorbar(r, m, e, marker=mk, ms=6 if mk == "*" else 4,
                 lw=0, elinewidth=1.0, capsize=2, color=col, label=lab)
-ax.axhline(stat("ctx_nrem_rand_1000")[0], color=C["night"], lw=1, ls="--")
-ax.text(1500, stat("ctx_nrem_rand_1000")[0] + 0.5, "offline night (480 batches)", color=C["night"], fontsize=7)
+night = stat("ctx_nrem_rand_1000")[0]
+ax.axhline(night, color=C["night"], lw=1, ls="--")
+ax.text(18760, night - 2.6, "offline night (480 batches)", color=C["night"], fontsize=6.5, ha="right")
 ax.set_xscale("log"); ax.set_xlabel("replay batches during wake"); ax.set_ylabel("final accuracy (%)")
-ax.legend(fontsize=6.3, loc="lower right")
+ax.set_xticks([2e3, 5e3, 1e4, 2e4]); ax.set_xticklabels(["2k", "5k", "10k", "20k"])
+ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+ax.legend(fontsize=6.3, loc="center right")
 fig.savefig(os.path.join(FIGS, "fig_timing.pdf")); plt.close(fig)
 
 # ---------------- Fig: replay batch size (s10 record substrate, stateless SGD) ----------------
