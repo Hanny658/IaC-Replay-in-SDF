@@ -38,7 +38,7 @@ Section 5 = "Scaling the mechanism: self-referenced decay and depth" (unifying p
 every control signal referenced to the learner's own state), "may not afford downtime",
 Driessen inferential-leap sentence, "tested surprise trigger", depth "consistent with",
 "per FP32 accumulate", Sorrenti -> TNNLS 36(7):12668-12679 (2025), Tononi full title, Payeur
-2021 added; SESLR NOT cited (arXiv shows it withdrawn for data errors). Appendix gained: data-
+2021 added; SESLR: the arXiv preprint was withdrawn but the paper appeared as Lin et al., ICICIP 2026, pp. 360-367 (DOI 10.1109/ICICIP67436.2026.11417642) -- CITED in related work: its 'sleep phase' is exclusive offline replay on a frozen-extractor spiking classifier to correct recency bias, i.e. the function our plastic readout receives continuously from isolated replay. Appendix gained: data-
 flow tikz, decomposition waterfall, energy Pareto (make_fig_appendix.py), baseline tuning
 ranges + paired bootstrap CIs (local - narrow night +2.1 [+1.4,+2.5] p=.004; - same-substrate
 night +1.7 [+0.1,+4.6] p=.25; - ER +5.8; - BP+ER +3.5). Pending at write time: held-out
