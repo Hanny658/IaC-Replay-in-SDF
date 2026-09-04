@@ -21,9 +21,9 @@ lines were won by merging the conclusion into the limitations paragraph and shri
 **Why:** the user's first submission target; the full preprint (report/preprint.tex, 22 pp)
 remains the long-form record and must stay consistent with the workshop version.
 **How to apply:** any new result goes into BOTH files; keep the workshop main text at 8 pages
-(References must start on page 9); camera-ready needs [final] option + author block; the
+(References may begin on page 8 but no main text on page 9); camera-ready needs [final] option + author block; the
 reviewer's optional figures (data-flow diagram, decomposition waterfall, energy Pareto) are
-still undone. Related: [[cortex-review-round-2026-09]], [[cortex-phase22-results]].
+in the appendix (make_fig_appendix.py; tikz in both tex files). Related: [[cortex-review-round-2026-09]], [[cortex-phase22-results]].
 
 ## GPT manuscript-review round (2026-09-04, applied to BOTH versions)
 Two real P0s: (1) headline replay cost was stale -- default config is batch_replay=16 ->
@@ -44,3 +44,8 @@ ranges + paired bootstrap CIs (local - narrow night +2.1 [+1.4,+2.5] p=.004; - s
 night +1.7 [+0.1,+4.6] p=.25; - ER +5.8; - BP+ER +3.5). Pending at write time: held-out
 seeds 3-5 (36 runs) and a cadence-2 x batch-16 matched-cost probe (seed 0: 91.1/93.7 -> the
 batch-8 point remains the better 1.2x point; frequency beats batch).
+Final (2026-09-04 evening): held-out split at SIX seeds -- Spearman 0.97, mean gap 0.90;
+rotation 91.6+-0.3 vs same-substrate night 89.0+-3.5 (+2.6 [+0.2,+5.2]), BP+ER 88.8 (+2.8),
+ER 85.4 (+6.3); skip d5 91.0/95.8; BUT the controller's static margin did NOT replicate
+(93.5+-4.3 vs 94.1+-0.2, one held-out seed collapsed) -> reported as unconfirmed in both
+versions. Matched-cost probe cadence2 x batch16 (1.2x): 91.7+-1.0/93.5+-0.4.
