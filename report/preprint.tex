@@ -1014,7 +1014,7 @@ under chronic underfitting) may bear on why local sleep in vivo both impairs beh
 Every configuration choice across the project's phases was made on the official test sets
 --- no validation split existed --- so the absolute numbers carry an unquantified selection
 margin; Appendix~\ref{app:val} replicates the headline orderings on a held-out tenth of the
-training data never trained on (Spearman $\rho=0.92$, mean gap $0.9$ points), and those
+training data never trained on (Spearman $\rho=0.97$, mean gap $0.9$ points), and those
 numbers are selection-independent replication estimates for that fixed split. All results are at MLP scale on MNIST/CIFAR variants with
 three seeds (six on the headline rows); BP+ER keeps a $1.7$-point lead on feature-based CIFAR with both sides at their best
 --- a lead the substrate decomposition attributes to dense activation rather than to
@@ -1373,38 +1373,38 @@ configurations over twenty phases --- was made on the official test sets; no val
 split existed. The absolute numbers in the main text are therefore optimistic by an unknown
 selection margin. As a check on the \emph{orderings}, which carry the claims, we re-ran the
 headline configurations with a tenth of the training set held out (stratified, fixed split,
-never trained on) as the evaluation set and the remaining nine tenths as the stream, three
+never trained on) as the evaluation set and the remaining nine tenths as the stream, six
 seeds each (Table~\ref{tab:val}). The held-out numbers sit $0.9$ points below the test
 numbers on average (a smaller training set and a distribution-matched evaluation set both
-contribute), the sequential-axis ranking correlates at Spearman $\rho=0.92$, and the headline
+contribute), the sequential-axis ranking correlates at Spearman $\rho=0.97$, and the headline
 MNIST orderings survive (this is a single fixed split of MNIST only): always-on rotation and
-the bout gate lead ($91.6$/$91.7$ vs.\
-the night's $90.7\pm2.2$, BP+ER's $88.7$ and unmasked ER's $83.7$); the silent mask trails
+the bout gate lead ($91.6\pm0.3$/$91.8\pm0.3$ vs.\ the night's $89.0\pm3.5$, BP+ER's
+$88.8\pm0.3$ and unmasked ER's $85.4\pm3.5$; paired bootstrap margins $+2.6$ $[+0.2,+5.2]$,
+$+2.8$ $[+2.5,+3.2]$ and $+6.3$ $[+3.8,+9.1]$ over six seed pairs); the silent mask trails
 rotation; the five-hidden-layer skip system holds the two-layer level on both axes
-($90.9$/$96.0$); and the adaptive decay keeps its static-side signature ($95.3$ vs.\
-$94.0$). The only inversions are within noise (rotation vs.\ bout gate, $0.1$ points; the
-night vs.\ the controller, inside the night's seed variance).
+($91.0$/$95.8$). One claim does not replicate cleanly: the adaptive decay's static-side
+margin ($96.1$ vs.\ $94.7$ on test) becomes $93.5\pm4.3$ vs.\ $94.1\pm0.2$ on the held-out
+split, where one of six seeds collapsed --- we report it as unconfirmed.
 
 \begin{table}[h]
 \centering\small
 \caption{\textbf{Held-out replication.} Sequential / static accuracy (\%) on the official
-test set (as in the main text) and on a held-out tenth of the training set never used for
-training; seeds $0$--$2$ in both columns, so the test column may differ from six-seed
-main-text entries.}
+test set (all available seeds, three to six) and on a held-out tenth of the training set
+never used for training (six seeds).}
 \label{tab:val}
 \begin{tabular}{lcccc}
 \toprule
 & \multicolumn{2}{c}{sequential} & \multicolumn{2}{c}{static} \\
 & test & held-out & test & held-out \\
 \midrule
-always-on rotation (default) & $92.7\pm0.3$ & $91.6\pm0.4$ & $94.8\pm0.3$ & $94.0\pm0.3$ \\
-bout-committed gate & $92.3\pm0.3$ & $91.7\pm0.3$ & --- & --- \\
-adaptive $\lambda$ (drive) & $91.7\pm0.2$ & $90.5\pm0.7$ & $96.1\pm0.2$ & $95.3\pm0.0$ \\
-five hidden layers $+$ skips $+$ adaptive $\lambda$ & $91.5\pm0.4$ & $90.9\pm0.1$ & $96.2\pm0.3$ & $96.0\pm0.2$ \\
-silent mask (no rotation) & $89.4\pm0.3$ & $88.0\pm0.6$ & --- & --- \\
-offline night, same substrate & $89.8\pm4.7$ & $90.7\pm2.2$ & --- & --- \\
-unmasked interleaved ER & $87.0\pm1.1$ & $83.7\pm3.8$ & --- & --- \\
-BP $+$ ER & $89.3\pm0.8$ & $88.7\pm0.4$ & --- & --- \\
+always-on rotation (default) & $92.7\pm0.3$ & $91.6\pm0.3$ & $94.7\pm0.3$ & $94.1\pm0.2$ \\
+bout-committed gate & $92.3\pm0.2$ & $91.8\pm0.3$ & --- & --- \\
+adaptive $\lambda$ (drive) & $91.7\pm0.2$ & $90.6\pm0.6$ & $96.1\pm0.2$ & $93.5\pm4.3$ \\
+five hidden layers $+$ skips $+$ adaptive $\lambda$ & $91.5\pm0.4$ & $91.0\pm0.3$ & $96.2\pm0.3$ & $95.8\pm0.3$ \\
+silent mask (no rotation) & $88.8\pm0.8$ & $88.0\pm0.7$ & --- & --- \\
+offline night, same substrate & $90.9\pm3.2$ & $89.0\pm3.5$ & --- & --- \\
+unmasked interleaved ER & $87.0\pm1.1$ & $85.4\pm3.5$ & --- & --- \\
+BP $+$ ER & $89.3\pm0.8$ & $88.8\pm0.3$ & --- & --- \\
 no buffer & $19.6\pm0.0$ & $19.4\pm0.0$ & --- & --- \\
 \bottomrule
 \end{tabular}

@@ -330,7 +330,7 @@ rows), mean $\pm$ s.d. Energy is an idealised 45-nm FP32 arithmetic-energy proxy
 $4.6$\,pJ per multiply--accumulate --- after rate-to-spike conversion with thresholds calibrated on training
 images \citep{rueckauer2017}; it excludes data movement and membrane updates. Every choice
 made during development used the official test sets; Appendix~\ref{app:val} replicates the
-headline orderings on a held-out tenth of the training data ($\rho=0.92$, mean gap $0.9$).
+headline orderings on a held-out tenth of the training data ($\rho=0.97$, mean gap $0.9$).
 Further protocol details are in Appendix~\ref{app:cost}.
 
 % ================================================================ 4
@@ -956,31 +956,34 @@ configurations --- was made on the official test sets. As a check on the orderin
 the claims, the headline configurations were re-run with a tenth of the training set held out
 (stratified, fixed split, never trained on) as the evaluation set, three seeds each
 (Table~\ref{tab:val}). Held-out numbers sit $0.9$ points below test on average, the
-sequential-axis ranking correlates at Spearman $\rho=0.92$, and the headline MNIST orderings
-survive: always-on rotation and the bout gate lead ($91.6$/$91.7$ vs.\ the night's
-$90.7\pm2.2$, BP+ER's $88.7$ and unmasked ER's $83.7$); the silent mask trails rotation; the
-five-layer skip system holds the two-layer level on both axes; the adaptive decay keeps its
-static-side signature. The only inversions are within noise. This is a single fixed split of
-MNIST only.
+sequential-axis ranking correlates at Spearman $\rho=0.97$, and the headline MNIST orderings
+survive: always-on rotation and the bout gate lead ($91.6\pm0.3$/$91.8\pm0.3$ vs.\ the
+night's $89.0\pm3.5$, BP+ER's $88.8\pm0.3$ and unmasked ER's $85.4\pm3.5$; paired
+bootstrap margins $+2.6$ $[+0.2,+5.2]$, $+2.8$ $[+2.5,+3.2]$ and $+6.3$ $[+3.8,+9.1]$ over six
+seed pairs); the silent mask trails rotation; the five-layer skip system holds the two-layer
+level on both axes ($91.0$/$95.8$). One claim does not replicate cleanly: the adaptive decay's
+static-side margin ($96.1$ vs.\ $94.7$ on test) becomes $93.5\pm4.3$ vs.\ $94.1\pm0.2$ on
+the held-out split, where one of six seeds collapsed --- we report it as unconfirmed. This is
+a single fixed split of MNIST only.
 
 \begin{table}[h]
 \centering\small
 \caption{\textbf{Held-out replication.} Sequential / static accuracy on the official test set
-and on a held-out tenth of the training set; seeds $0$--$2$ in both columns.}
+(all available seeds, three to six) and on a held-out tenth of the training set (six seeds).}
 \label{tab:val}
 \begin{tabular}{lcccc}
 \toprule
 & \multicolumn{2}{c}{sequential} & \multicolumn{2}{c}{static} \\
 & test & held-out & test & held-out \\
 \midrule
-always-on rotation (default) & $92.7\pm0.3$ & $91.6\pm0.4$ & $94.8\pm0.3$ & $94.0\pm0.3$ \\
-bout-committed gate & $92.3\pm0.3$ & $91.7\pm0.3$ & --- & --- \\
-adaptive $\lambda$ & $91.7\pm0.2$ & $90.5\pm0.7$ & $96.1\pm0.2$ & $95.3\pm0.0$ \\
-five hidden layers $+$ skips $+$ adaptive $\lambda$ & $91.5\pm0.4$ & $90.9\pm0.1$ & $96.2\pm0.3$ & $96.0\pm0.2$ \\
-silent mask (no rotation) & $89.4\pm0.3$ & $88.0\pm0.6$ & --- & --- \\
-offline night, same substrate & $89.8\pm4.7$ & $90.7\pm2.2$ & --- & --- \\
-unmasked interleaved ER & $87.0\pm1.1$ & $83.7\pm3.8$ & --- & --- \\
-BP $+$ ER & $89.3\pm0.8$ & $88.7\pm0.4$ & --- & --- \\
+always-on rotation (default) & $92.7\pm0.3$ & $91.6\pm0.3$ & $94.7\pm0.3$ & $94.1\pm0.2$ \\
+bout-committed gate & $92.3\pm0.2$ & $91.8\pm0.3$ & --- & --- \\
+adaptive $\lambda$ (drive) & $91.7\pm0.2$ & $90.6\pm0.6$ & $96.1\pm0.2$ & $93.5\pm4.3$ \\
+five hidden layers $+$ skips $+$ adaptive $\lambda$ & $91.5\pm0.4$ & $91.0\pm0.3$ & $96.2\pm0.3$ & $95.8\pm0.3$ \\
+silent mask (no rotation) & $88.8\pm0.8$ & $88.0\pm0.7$ & --- & --- \\
+offline night, same substrate & $90.9\pm3.2$ & $89.0\pm3.5$ & --- & --- \\
+unmasked interleaved ER & $87.0\pm1.1$ & $85.4\pm3.5$ & --- & --- \\
+BP $+$ ER & $89.3\pm0.8$ & $88.8\pm0.3$ & --- & --- \\
 no buffer & $19.6\pm0.0$ & $19.4\pm0.0$ & --- & --- \\
 \bottomrule
 \end{tabular}
