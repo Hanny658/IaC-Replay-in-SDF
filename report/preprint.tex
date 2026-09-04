@@ -492,26 +492,28 @@ stream; local sleep consolidates during it, in replay bursts confined to asleep 
 
 \begin{figure}[h]
 \centering
-\begin{tikzpicture}[font=\scriptsize, >=Latex, node distance=4mm,
-  box/.style={draw, rounded corners, inner sep=3pt, align=center, minimum height=5.5mm},
-  exc/.style={box, dashed, draw=red!60!black}]
-\node[box] (wake) {waking batch $X_t$};
-\node[box, right=of wake] (fwd) {forward pass\\ \kwta{} $+$ suppression $s^\ell(t)$};
-\node[box, right=of fwd] (awake) {awake sets $\mathcal{A}^\ell(X_t)$};
-\node[box, below=6mm of awake] (mask) {synapse mask $M^\ell$ (Eq.~\ref{eq:mask})\\ unit mask $\mathbf{1}[i\notin\mathcal{A}^\ell]$};
-\node[box, right=of awake] (rot) {rotation mask\\ $s^\ell(t{+}1)=\mathbf{1}[i\in\mathcal{A}^\ell(X_t)]$};
-\node[box, below=6mm of wake] (buf) {episodic buffer\\ ($K$ raw samples, reservoir)};
-\node[box, right=of buf] (rep) {replay micro-batch};
-\node[box, below=6mm of mask] (step) {masked heavy-ball step (Eq.~\ref{eq:maskedstep}) on $W^\ell,B^{\ell-1},b^\ell$:\\ velocity frozen outside $M$, decay confined to $M$};
-\node[exc, right=of step] (ro) {readout row $W^L$, $b^L$:\\ always plastic (exception)};
-\node[box, below=6mm of buf] (press) {pressure $S_i \mathrel{+}= \bar a_i(X_t)$\\ burst iff $\langle S\rangle_{\mathrm{asleep}}\ge\theta$};
+\begin{tikzpicture}[font=\scriptsize, >=Latex,
+  box/.style={draw, rounded corners, inner sep=3pt, align=center, minimum height=6mm, text width=2.5cm},
+  wide/.style={box, text width=5.2cm},
+  exc/.style={box, dashed, draw=red!60!black, text width=2.7cm}]
+\node[box] (wake)  at (0,0)     {waking batch $X_t$};
+\node[box] (fwd)   at (3.3,0)   {forward pass: \kwta{} $+$ suppression $s^\ell(t)$};
+\node[box] (awake) at (6.6,0)   {awake sets $\mathcal{A}^\ell(X_t)$};
+\node[box] (rot)   at (10.2,0)  {rotation mask $s^\ell(t{+}1)=\mathbf{1}[i\in\mathcal{A}^\ell(X_t)]$};
+\node[box] (buf)   at (0,-1.7)  {episodic buffer ($K$ raw samples, reservoir)};
+\node[box] (rep)   at (3.3,-1.7){replay micro-batch};
+\node[box] (mask)  at (6.6,-1.7){synapse mask $M^\ell$ (Eq.~\ref{eq:mask}); unit mask $\mathbf{1}[i\notin\mathcal{A}^\ell]$};
+\node[box] (press) at (0,-3.6)  {pressure $S_i \mathrel{+}= \bar a_i(X_t)$; burst iff $\langle S\rangle_{\mathrm{asleep}}\ge\theta$};
+\node[wide](step)  at (5.4,-3.6){masked heavy-ball step (Eq.~\ref{eq:maskedstep}) on $W^\ell$, $B^{\ell-1}$, $b^\ell$: velocity frozen outside $M$, decay confined to $M$};
+\node[exc] (ro)    at (10.2,-3.6){readout row $W^L$, $b^L$: always plastic (the one exception)};
 \draw[->] (wake) -- (fwd); \draw[->] (fwd) -- (awake); \draw[->] (awake) -- (rot);
 \draw[->] (awake) -- (mask); \draw[->] (mask) -- (step);
-\draw[->] (buf) -- (rep); \draw[->] (rep) |- (step);
-\draw[->] (wake) -- (buf); \draw[->] (fwd) |- node[pos=0.75, above, font=\tiny]{wake update: unmasked, full decay} (step.west);
-\draw[->, dashed] (press) -| (rep);
-\draw[->, dashed] (rot.south) |- node[pos=0.8, above, font=\tiny]{next batch} (fwd.east);
-\draw[->] (mask) -- (ro);
+\draw[->] (buf) -- (rep); \draw[->] (rep) -- (step.north west);
+\draw[->] (wake) -- (buf);
+\draw[->] (fwd.south) -- node[left, font=\tiny, align=right, pos=0.55]{wake update:\\ unmasked} (step.north);
+\draw[->, dashed] (press) -- (step);
+\draw[->, dashed] (rot.north) |- ++(0,0.45) -| node[pos=0.25, above, font=\tiny]{next batch} (fwd.north);
+\draw[->, dashed] (mask.east) -| (ro.north);
 \end{tikzpicture}
 \caption{\textbf{Training data flow.} Each waking batch is inferred under the current
 suppression mask; its awake sets define the synapse and unit masks for the replay micro-batch

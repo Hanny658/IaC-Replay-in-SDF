@@ -421,6 +421,25 @@ SGD η=0.02 联合最优（0.01: 92.2/93.3；0.05: 91.5/94.7；0.1 崩 79.5±17�
 CL4FMAgents @ NeurIPS 2026（8 页正文、双盲、非存档、截止 9/7 AoE）,NeurIPS 2026 样式,
 面向智能体的叙事,主线保留、旁线与负结果全部入附录,新增控制器×深度图（`make_fig_depth.py`）。
 
+### GPT 手稿评审轮（对 8 页版,2026-09-04）
+
+两个 P0 均属实并已修：(1) **重放成本**——头条配置 batch_replay=16,18,760×16 = 3.0e5 =
+夜间的 2.4×,"1.2×" 是 batch-8 格（91.8）的旧数字;摘要/结果/讨论/附录改为"2.4×;匹配 1.2×
+预算时 batch-8 达 91.8"（另跑 cadence-2×batch-16 探针,恰 1.2×）。(2) **命题 1**改为只声明隐层
+活动不变 + "readout 满足同条件或固定则输出不变"的推论;摘要/引言"present computation
+invariant"改为"hidden computation … exact channel, near-exact end to end"。P1 全部落地：
+定理 batch 化（X={x_b}、每样本阈值 τ_{k,b}、严格不等式）、增益 g^ℓ 声明为固定 1 并从公式移除、
+**masked heavy-ball 更新式**按实现写出（速度掩码外冻结、衰减限于掩码、偏置按单元掩码、μ=0.9）、
+控制器驱动定义为"优化器输出、衰减前"的清醒增量 u（EMA 0.02、ε=1e-12）、"one constant"→
+"one dataset-independent ratio target"、第 5 节改名 "Scaling the mechanism: self-referenced
+decay and depth" 并写明统一原则（novelty/homeostasis/decay 均参照学习者自身状态）、
+"cannot pause"→"may not afford downtime"、Driessen 推理跳跃标注、"must/never"→"tested trigger"、
+深度归因→"consistent with … principal contributor"、能耗"per FP32 accumulate"、Sorrenti 换
+TNNLS 36(7) 正式版、Tononi 补全标题、burst 学习加 Payeur 2021;**SESLR 未引**（arXiv 已撤稿）。
+新增附录：数据流图（tikz）、底座分解瀑布图、能耗 Pareto 图（`make_fig_appendix.py`）、
+基线调参范围说明 + 配对 bootstrap CI（本地−窄夜间 +2.1 [+1.4,+2.5] p=0.004;−同底座夜间
++1.7 [+0.1,+4.6] p=0.25;−ER +5.8;−BP+ER +3.5）。held-out 划分补种子 3–5 在跑。
+
 ### 第 22 期（"stateless" 是否字面成立：momentum=0 的纯 SGD,2026-09-04,66 运行）
 
 **动机**：手稿 18 处 "stateless SGD",但 heavy-ball 的速度缓冲是每突触状态（只是无二阶矩）。
