@@ -127,9 +127,12 @@ one \citep{tadros2022}, after several tasks at once \citep{bazhenov2026}, in spi
 coarse alternation of training and sleep \citep{golden2022}, and in equilibrium-propagation
 networks combined with small rehearsal buffers \citep{kubo2025}. Wake--sleep frameworks with NREM
 and REM stages \citep{sorrenti2024,robinson2022} and engineering systems such as SIESTA
-\citep{harun2023} likewise schedule consolidation offline. In all of these, sleep is global,
-offline, and clocked; none implements consolidation confined to currently unused units during
-ongoing inference.
+\citep{harun2023} likewise schedule consolidation offline, and SESLR \citep{lin2026} appends a
+noise-enhanced sleep phase --- a spiking classifier on a frozen extractor training exclusively
+on its replay buffer --- to correct the recency bias left by online learning. In all of these,
+sleep is global, offline, and clocked; none implements consolidation confined to currently
+unused units during ongoing inference, and the bias correction such a phase delivers is what
+our plastic readout receives continuously from isolated replay.
 
 \paragraph{Gating, subnetwork and history-dependent competition methods.}
 Context-dependent gating (XdG) activates a fixed random subnetwork per task but requires task
@@ -390,7 +393,7 @@ inspired by cholinergic novelty signalling \citep{hasselmo2006}). Monitoring str
 averages is standard in concept-drift detection \citep{ross2012}, and related loss-ratio triggers
 appear in concurrent continual-learning work; we claim no priority for the detector itself ---
 only for what it gates (the rotation, hence the replay channel's width) and for the unmastered
-clause below. Absolute thresholds provably cannot serve here: the
+clause below. A single absolute threshold cannot serve across the regimes considered here: the
 converged error of a ten-class i.i.d.\ stream exceeds any level a two-class task dips under, and
 we observe exactly this failure (gate open $100\%$ of the time on static MNIST, $95\%$ on CIFAR,
 for any threshold that behaves on split-MNIST).
@@ -584,7 +587,7 @@ consolidation was an artefact of counting $256$-sample batches.
 samples; unmasked, silent-masked and offline-night replay all degrade. \textbf{Right
 (timing):} accuracy vs.\ number of waking replay batches. Even trickles fail; clocked bursts
 recover most of the gap; pressure-triggered bursts (star) dominate at sparse budgets;
-surprise triggering never fires at all.}
+surprise triggering fires no events in this regime.}
 \label{fig:batch}
 \end{figure}
 
@@ -621,7 +624,7 @@ Section~\ref{sec:ablation} collects these controls together with the remaining c
 knockouts; a two-sided learning-rate sweep (Appendix~\ref{app:eta}) shows the comparison is a
 plateau rather than a knife-edge, with masked Adam already at its own best.
 
-\subsection{When replay must be rare: homeostatic bursts, never surprise}
+\subsection{When replay must be rare: homeostatic bursts, not surprise}
 Figure~\ref{fig:batch} (right): at $12.5\%$ of replay events, a clocked burst of $16$
 batches every $128$ retains $87.3\pm0.2$ while an even trickle at the same budget collapses
 ($81.9\pm2.9$) --- masked replay reaches only part of the synapses per event and cannot
@@ -933,7 +936,9 @@ the sequential axis the controller concedes $0.5$--$1.4$ points to the per-datas
 value; on every static axis it wins, by $+0.5$ to $+3.6$ --- the fixed decay had
 under-regularised every thick-signal regime all along --- and split-MNIST static
 $96.1\pm0.2$ is the best i.i.d.\ accuracy the two-hidden-layer substrate has produced under
-\emph{any} configuration, isolation-free included. On CIFAR-100 the controller lifts the system
+\emph{any} configuration we tested, isolation-free included --- a margin that did not
+replicate cleanly on the held-out split (Appendix~\ref{app:val}) and that we therefore treat
+as provisional. On CIFAR-100 the controller lifts the system
 $2.6$--$5\times$ over the manual rescue with no dataset-specific decay coefficient (floor-regime
 numbers, reported for ordering only: the strong BP+ER reference reaches $6$--$10\%$ there).
 The realised $\lambda_\ell$ (logged throughout) self-differentiates exactly as the tuning
@@ -1109,6 +1114,8 @@ which sharpens, rather than blurs, the division of labour between wake and sleep
 \bibitem[Kolen and Pollack(1994)]{kolen1994} Kolen, J.F., Pollack, J.B. (1994). Backpropagation without weight transport. \emph{IEEE ICNN}.
 
 \bibitem[Kubo et al.(2025)]{kubo2025} Kubo, Y., Delanois, J.E., Bazhenov, M. (2025). Toward lifelong learning in equilibrium propagation: Sleep-like and awake rehearsal for enhanced stability. \emph{arXiv:2508.14081}.
+
+\bibitem[Lin et al.(2026)]{lin2026} Lin, E., Luo, W., Jia, W., Yang, S., Xu, W. (2026). Online continual learning via spiking neural networks with sleep enhanced latent replay. In \emph{14th International Conference on Intelligent Control and Information Processing (ICICIP)}, pp.\ 360--367.
 
 \bibitem[L\"assig et al.(2023)]{lassig2023} L\"assig, F., Aceituno, P.V., Sorbaro, M., Grewe, B.F. (2023). Bio-inspired, task-free continual learning through activity regularization. \emph{Biological Cybernetics} 117, 345--361.
 
