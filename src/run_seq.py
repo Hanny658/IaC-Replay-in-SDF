@@ -802,6 +802,13 @@ CONFIGS = {
                                               mask="refractory", eta=e, **({"static": True} if pre else {}))
        for pre in ("", "static_")
        for tag, e in (("3e4", 3e-4), ("3e3", 3e-3))},
+    # ---- 24 (GPT review): a matched-cost point -- replay every second waking batch with the
+    # default 16-sample micro-batch = 9,380 x 16 samples, 1.2x the night's, on both axes.
+    **{f"g24_sgd_cad2_br16_s10{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                            batch_wake=16, cadence=2, batch_replay=16, hidden=(512, 256),
+                                            active_frac=0.10, mask="refractory", opt="sgd", eta=0.02,
+                                            **({"static": True} if sfx else {}))
+       for sfx in ("", "_static")},
     # ---- 21 (review): end-to-end exactness of the isolation on the record configuration, with
     # the free readout (default) and the isolated readout, plus the Adam-era 5% substrate the
     # original "0.0 drift" check was logged on.

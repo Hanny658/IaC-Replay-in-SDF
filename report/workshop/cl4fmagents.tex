@@ -33,7 +33,8 @@
 \maketitle
 
 \begin{abstract}
-An agent that keeps learning in deployment cannot pause to consolidate, yet replay-based
+An agent that keeps learning in deployment may not be able to afford dedicated consolidation
+downtime, yet replay-based
 continual learning almost always relies on offline rehearsal phases or on interleaving
 replayed samples with the incoming stream. Brains face the same constraint and solve part of
 it with \emph{local sleep}: brief, use-dependent off-periods of individual circuits during
@@ -45,14 +46,15 @@ units, near-exact elsewhere by measurement --- (ii) a \emph{refractory rotation}
 which units that have just fired sit out the next competition, widening the isolated channel,
 and (iii) internal control signals: a unit-level homeostatic pressure that triggers replay
 bursts and a relative-novelty gate. The construction inverts the usual direction of
-non-interfering continual learning: the present computation is held invariant while past
-memories are consolidated through degrees of freedom the current batch leaves unused. On
-class-incremental split-MNIST the system reaches $92.7\pm0.3\%$ with no offline phase, above
-the best offline-rehearsal schedule ($90.7\pm0.4\%$) at $1.2\times$ its replay samples;
-masked replay is insensitive to replay batch size down to eight samples, where unmasked replay
-and offline rehearsal degrade sharply; the ordering transfers to split CIFAR-10. A
+non-interfering continual learning: the hidden computation is held invariant --- exactly on
+the proven channel, near-exactly end to end --- while past memories are consolidated through
+degrees of freedom the current batch leaves unused. On class-incremental split-MNIST the
+system reaches $92.7\pm0.3\%$ with no offline phase, above the best offline-rehearsal
+schedule ($90.7\pm0.4\%$), at $2.4\times$ its replay samples; at a matched $1.2\times$
+budget, eight-sample micro-batches still reach $91.8\pm0.3\%$, where unmasked replay and
+offline rehearsal degrade sharply; the ordering transfers to split CIFAR-10. A
 drive-referenced controller for the rule's synaptic decay replaces per-dataset tuning with one
-dimensionless constant and, with locally learned skip synapses, lets a five-hidden-layer stack
+dataset-independent ratio target and, with locally learned skip synapses, lets a five-hidden-layer stack
 match the two-layer record where every tested fixed decay collapses.
 \end{abstract}
 
@@ -72,9 +74,11 @@ and grows fragile as replay batches shrink toward what an online budget allows.
 Biology suggests a third option. Sleep-like off-periods occur \emph{locally}, in individual
 cortical circuits of awake animals \citep{vyazovskiy2011}, and inducing such ON/OFF
 alternation in one hemisphere of awake mice discharges sleep pressure and rescues memory
-consolidation, whereas an equal tonic reduction of firing does not \citep{driessen2026}. The
-brain consolidates \emph{while it infers}, in circuits the current computation is not using.
-This paper asks whether an artificial learner can do the same, and what it costs.
+consolidation, whereas an equal tonic reduction of firing does not \citep{driessen2026}. Some
+core functions of sleep can thus be discharged locally during wakefulness. We take this as an
+algorithmic motivation --- not as a claim about where biological consolidation occurs --- to
+ask whether the computational degrees of freedom a learner is not using can host consolidation
+while it acts, and what that costs.
 
 We study the question in a deliberately constrained learner --- a two-hidden-layer network
 trained end to end by local, biologically motivated rules (no weight transport, bounded
@@ -84,20 +88,20 @@ degrees of freedom the current input does and does not use. The contributions ar
 \begin{itemize}[leftmargin=1.2em, itemsep=1pt, topsep=2pt]
 \item \textbf{Isolated replay during inference.} A synapse may take a replay update only if
 its presynaptic unit is silent for the current input or its postsynaptic unit is asleep.
-Under \kwta{} dynamics this is exactly output-neutral for silent-presynaptic and suppressed
-units (Propositions~\ref{prop:pre}--\ref{prop:post}), and we measure how nearly it holds
-elsewhere. Isolation makes micro-batch replay affordable: accuracy is flat from $256$ down to
+Under \kwta{} dynamics this leaves the hidden computation exactly invariant for
+silent-presynaptic and suppressed units (Propositions~\ref{prop:pre}--\ref{prop:post}); we
+measure how nearly it holds elsewhere and end to end. Isolation makes micro-batch replay affordable: accuracy is flat from $256$ down to
 $8$ replayed samples per step, where unmasked and offline schedules collapse.
 \item \textbf{Refractory rotation.} Units that fired on the current batch sit out the next
 competition. This alternation --- the algorithmic counterpart of the ON/OFF requirement in
 \citet{driessen2026} --- widens the consolidable channel from $\approx0.25$ to $0.53$ of the
 replay-active units and is worth $+3.9$ sequential points; a tonic reduction of the same
 units' gain, like the biological control, is not.
-\item \textbf{Internal triggers.} Replay is triggered by a unit-level homeostatic pressure and
-never by surprise; the trigger that is right for offline rehearsal is wrong for consolidation
-during wake. A relative-novelty gate on rotation is scale-free where absolute thresholds
-provably fail.
-\item \textbf{One constant instead of per-dataset decay tuning, and depth.} A drive-referenced
+\item \textbf{Internal triggers.} Replay is triggered by a unit-level homeostatic pressure;
+the tested surprise trigger fails during wake, whereas offline rehearsal is best timed by
+novelty in our sweeps. A relative-novelty gate on rotation is scale-free where absolute
+thresholds fail.
+\item \textbf{One ratio target instead of per-dataset decay tuning, and depth.} A drive-referenced
 controller for the rule's synaptic decay removes its last per-dataset constant and, with
 locally learned skip synapses, lets a five-hidden-layer stack match the two-layer record on both
 axes where every tested fixed decay collapses to chance.
@@ -156,12 +160,14 @@ $A_{\mathrm{iid}}$ and $R$.
 
 \paragraph{Base learner.} Layer activities are $a^0=x$ and, for $\ell=1,\dots,L$,
 \begin{equation}
-z^\ell = g^\ell\,(W^\ell a^{\ell-1}) + b^\ell,\qquad
+z^\ell = W^\ell a^{\ell-1} + b^\ell,\qquad
 a^\ell = \Phi_k\!\big(\sigma(z^\ell)\odot(1-s^\ell)\big),
 \label{eq:forward}
 \end{equation}
 where $\sigma$ is a rectifier, $s^\ell\in\{0,1\}^{n_\ell}$ the suppression mask of the
-rotation rule below, and $\Phi_k$ keeps the $k$ largest entries of each row (\kwta). Errors
+rotation rule below, and $\Phi_k$ keeps the $k$ largest entries of each row (\kwta); a
+per-unit gain exists in the implementation for homeostatic scaling but is fixed at $1$
+throughout. Errors
 come from one top-down sweep through learned feedback weights
 $B^\ell\in\mathbb{R}^{n_{\ell+1}\times n_\ell}$ (no weight transport),
 \begin{equation}
@@ -169,8 +175,8 @@ $B^\ell\in\mathbb{R}^{n_{\ell+1}\times n_\ell}$ (no weight transport),
 \varepsilon^\ell = \sigma'(z^\ell)\odot\Big((B^\ell)^{\!\top}\big[\kappa\tanh(\varepsilon^{\ell+1}/\kappa)\odot\mathbf{1}(a^{\ell+1}>0)\big]\Big),
 \label{eq:sweep}
 \end{equation}
-a bounded, event-gated burst signal in the spirit of predictive-coding and burst-multiplexing
-learners \citep{whittington2017}. Forward and feedback weights follow the same local product
+a bounded, event-gated burst signal in the spirit of predictive-coding and burst-dependent
+learners \citep{whittington2017,payeur2021}. Forward and feedback weights follow the same local product
 with a shared decay $\lambda$ (Kolen--Pollack alignment \citep{kolen1994,akrout2019}),
 $\Delta W^\ell\propto\varepsilon^\ell(a^{\ell-1})^{\!\top}-\lambda W^\ell$,
 $\Delta B^{\ell-1}\propto\varepsilon^\ell(a^{\ell-1})^{\!\top}-\lambda B^{\ell-1}$, under
@@ -180,34 +186,45 @@ momentum-free SGD is the right choice inside the consolidation loop. The base le
 $1.2$ points against a dense backpropagation MLP on i.i.d.\ MNIST at $4\times$ fewer synaptic
 operations (Appendix~\ref{app:substrate}).
 
-\paragraph{Isolated replay.} Let $x$ be the current waking batch and
-$\mathcal{A}^\ell(x)=\{i: a^\ell_i(x)\neq0 \text{ for some sample in } x\}$ the awake set.
-During the same forward step, a replay micro-batch drawn from the buffer is applied through
-the synapse mask
+\paragraph{Isolated replay.} Let $X=\{x_b\}_{b=1}^{m}$ be the current waking batch,
+$a^\ell_{i,b}$ the activity of unit $i$ on sample $b$, and
+$\mathcal{A}^\ell(X)=\{i:\exists b,\ a^\ell_{i,b}\neq0\}$ the awake set. During the same
+forward step, a replay micro-batch drawn from the buffer is applied through the synapse mask
 \begin{equation}
-M^\ell_{ij}=\mathbf{1}\big[\,j\notin\mathcal{A}^{\ell-1}(x)\ \lor\ i\notin\mathcal{A}^\ell(x)\,\big],
+M^\ell_{ij}=\mathbf{1}\big[\,j\notin\mathcal{A}^{\ell-1}(X)\ \lor\ i\notin\mathcal{A}^\ell(X)\,\big],
 \label{eq:mask}
 \end{equation}
 i.e.\ a synapse takes the replay update iff its presynaptic unit is silent for the current
-input or its postsynaptic unit is asleep; the optimiser's velocity advances only inside the
-mask (unmasked momentum would re-inject the update into awake synapses \citep{mckee2026,bricken2023}).
-The readout row stays plastic, so old classes remain calibrated; the guarantees below concern
-the hidden computation.
+input or its postsynaptic unit is asleep. The mask applies to the \emph{entire}
+replay-induced parameter change, not only to the data gradient: with heavy-ball velocity $v$
+($\mu=0.9$), data gradient $G$ and decay $\lambda$, a replay step is
+\begin{equation}
+v\leftarrow M\odot(\mu v+G)+(1-M)\odot v,\qquad
+W\leftarrow W+\eta\,M\odot v-\lambda\,M\odot W,
+\label{eq:maskedstep}
+\end{equation}
+so the velocity is frozen (not zeroed) outside the mask, the decay is confined to it, and
+biases follow the unit mask $\mathbf{1}[i\notin\mathcal{A}^\ell(X)]$; unmasked momentum would
+re-inject the update into awake synapses \citep{mckee2026,bricken2023}. The readout row and
+its bias stay plastic, so old classes remain calibrated; the guarantees below concern the
+hidden computation.
 
 \begin{proposition}[Pre-silent updates are exactly invisible]\label{prop:pre}
-Fix $x$ and let $\widehat W^\ell=W^\ell+\Delta^\ell$ with $\Delta^\ell_{ij}=0$ whenever
-$a^{\ell-1}_j(x)\neq0$. Then every hidden activity on $x$, hence the network output, is
-unchanged for any magnitude of $\Delta$.
+Fix $X$ and let $\widehat W^\ell=W^\ell+\Delta^\ell$ with $\Delta^\ell_{ij}=0$ whenever
+$j\in\mathcal{A}^{\ell-1}(X)$. Then every hidden activity on every sample of $X$ is
+unchanged for any magnitude of $\Delta$; if the readout row satisfies the same condition, or
+is held fixed, the network output is unchanged as well.
 \end{proposition}
 \begin{proposition}[Post-asleep updates are invisible under a margin]\label{prop:post}
 Let $\Delta^\ell$ and $\Delta b^\ell$ additionally move synapses and biases of units
-$i\notin\mathcal{A}^\ell(x)$ with active presynaptic partners, and write
-$\delta_i=g^\ell\sum_j\Delta^\ell_{ij}a^{\ell-1}_j(x)+\Delta b^\ell_i$. If for every such unit
-$\sigma(z^\ell_i+\delta_i)$ stays below the $k$-th largest value entering $\Phi_k$, the hidden
-activities on $x$ are unchanged.
+$i\notin\mathcal{A}^\ell(X)$ with active presynaptic partners, and write
+$\delta_{i,b}=\sum_j\Delta^\ell_{ij}a^{\ell-1}_{j,b}+\Delta b^\ell_i$. If for every such unit
+and every sample $\sigma(z^\ell_{i,b}+\delta_{i,b})<\tau^\ell_{k,b}$, where $\tau^\ell_{k,b}$
+is the $k$-th largest value entering $\Phi_k$ on sample $b$ (strict, so a tie cannot promote
+the unit), the hidden activities on $X$ are unchanged.
 \end{proposition}
 \begin{corollary}[Suppressed units are exact for any magnitude]\label{cor:refr}
-If $s^\ell_i=1$ in \eqref{eq:forward}, $a^\ell_i(x)=0$ identically and
+If $s^\ell_i=1$ in \eqref{eq:forward}, $a^\ell_{i,b}=0$ for every sample and
 Proposition~\ref{prop:post} holds with no margin condition.
 \end{corollary}
 Proofs are in Appendix~\ref{app:proofs}. The default system does not enforce the margin, so we
@@ -219,9 +236,9 @@ $\sim\!10^{-4}$ of asleep units per step. Isolation is exact for silent-presynap
 suppressed units and near-exact elsewhere; Corollary~\ref{cor:refr} is why rotation makes it
 robust.
 
-\paragraph{Refractory rotation.} After batch $x_t$, set
-$s^\ell_i(t{+}1)=\mathbf{1}[i\in\mathcal{A}^\ell(x_t)]$: every unit that fired sits out the
-next competition and is therefore asleep --- consolidable, and exactly so --- for $x_{t+1}$.
+\paragraph{Refractory rotation.} After batch $X_t$, set
+$s^\ell_i(t{+}1)=\mathbf{1}[i\in\mathcal{A}^\ell(X_t)]$: every unit that fired sits out the
+next competition and is therefore asleep --- consolidable, and exactly so --- for $X_{t+1}$.
 Rotation widens the isolated channel $\rho_\ell$ (the fraction of replay-activated units that
 are asleep for the current input) from $0.2$--$0.3$ to $\approx0.53$, at the price of running
 inference on the second-best coalition.
@@ -309,8 +326,8 @@ offline ``night'' ($20$ replay batches of $256$ at $3\times$ learning rate after
 epoch, the best-performing offline schedule in our sweep) on its preferred narrower core and
 on our substrate; interleaved ER for the local learner; no buffer. Three seeds (six on headline
 rows), mean $\pm$ s.d. Energy is an idealised 45-nm FP32 arithmetic-energy proxy
-\citep{horowitz2014} --- $0.9$\,pJ per synaptic event (one accumulate) against $4.6$\,pJ per
-multiply--accumulate --- after rate-to-spike conversion with thresholds calibrated on training
+\citep{horowitz2014} --- $0.9$\,pJ per FP32 accumulate (one per synaptic event) against
+$4.6$\,pJ per multiply--accumulate --- after rate-to-spike conversion with thresholds calibrated on training
 images \citep{rueckauer2017}; it excludes data movement and membrane updates. Every choice
 made during development used the official test sets; Appendix~\ref{app:val} replicates the
 headline orderings on a held-out tenth of the training data ($\rho=0.92$, mean gap $0.9$).
@@ -327,7 +344,9 @@ $\mathbf{92.7\pm0.3\%}$ (six seeds) with no offline phase --- above the best off
 on ours) and far above unmasked interleaved ER at the same budget ($89.7\pm1.1$) and BP+ER
 ($89.3\pm0.8$). Adding a night on top of continuous local sleep produces no detectable
 improvement ($92.7\pm0.4$): once consolidation runs during wake, the offline phase is
-redundant at this buffer size, at $1.2\times$ its replay samples (Appendix~\ref{app:cost}).
+redundant at this buffer size. The headline configuration replays $2.4\times$ the night's
+samples; at a matched $1.2\times$ budget the eight-sample micro-batch reaches $91.8\pm0.3$
+(Figure~\ref{fig:batch}; Appendix~\ref{app:cost}).
 
 \paragraph{Isolation makes micro-batch replay affordable.} Figure~\ref{fig:batch} (left):
 masked refractory replay is flat in replay batch size from $256$ down to $8$
@@ -336,8 +355,9 @@ at $87.0\pm1.1$, the rotation-free silent mask at $88.8\pm0.8$, and the offline 
 from $90.9$ to $87.3\pm3.2$ when its batches shrink to $16$. A replay micro-batch is a
 high-variance gradient estimate; applied to the full network it perturbs the coalition
 currently encoding the stream and, with shared optimiser state, the perturbation compounds.
-Inside the mask each update leaves the present computation untouched, so variance accumulates
-only where it can do no immediate harm and is averaged over thousands of events.
+Inside the exact portion of the mask each update is provably hidden-state neutral, and
+violations in the margin-conditioned remainder are rare in measurement, so variance
+accumulates only where it can do no immediate harm and is averaged over thousands of events.
 
 \begin{figure}[t]
 \centering
@@ -411,8 +431,9 @@ batches every $128$ retains $87.3\pm0.2$ while an even trickle at the same budge
 ($81.9\pm2.9$) --- masked replay reaches only part of the synapses per event and cannot
 dribble. Unit-level pressure triggering does better still ($89.1\pm1.1$ at a third of the
 events), and surprise triggering fails: the converged error never crosses the threshold, so
-zero replay events fire ($19.0$). The waking trigger must be homeostatic --- the opposite of
-the offline night, whose best trigger in our sweeps is novelty-timed.
+zero replay events fire ($19.0$). Homeostatic triggering consistently outperforms the tested
+surprise trigger during wake --- the opposite of the offline night, whose best trigger in our
+sweeps is novelty-timed.
 
 \paragraph{The i.i.d.\ price and the activity fraction.} Rotation's static price is governed
 by the substrate's activity fraction: at $5\%$ it cost $1.3$--$3.0$ points on i.i.d.\ MNIST
@@ -444,7 +465,7 @@ dense rate inference ($20.7\times$) and $526$\,nJ for event-driven rate inferenc
 $T_s{=}8$ ($94.6\to90.1$ at $T_s{=}32$), consistent with rotation shaping sparser codes.
 
 % ================================================================ 5
-\section{One constant instead of per-dataset decay tuning, and depth}
+\section{Scaling the mechanism: self-referenced decay and depth}
 \label{sec:controller}
 
 \paragraph{The last tuned constant.} Every result above runs the learning rule with a decay
@@ -456,18 +477,24 @@ collapses and the network lands at chance ($2.4\%$ i.i.d.\ against $20$--$23\%$ 
 ten-class subset of the same images). The class count is a hidden variable every fixed decay
 is silently tuned against. We replace the constant by a per-layer ratio controller,
 \begin{equation}
-\lambda_\ell=\min\!\Big(\lambda_{\max},\ \rho\,\mathrm{EMA}\big[\overline{|\Delta W^\ell|}\big]\big/\overline{|W^\ell|}\Big),\qquad \rho=0.25,\ \lambda_{\max}=0.02,
+\lambda_\ell=\min\!\Big(\lambda_{\max},\ \rho\,\mathrm{EMA}\big[u^\ell\big]\big/\big(\overline{|W^\ell|}+\epsilon\big)\Big),\qquad \rho=0.25,\ \lambda_{\max}=0.02,
 \label{eq:controller}
 \end{equation}
-where $\overline{|\Delta W^\ell|}$ is the mean magnitude of the update the optimiser actually
-applied to layer $\ell$, the EMA runs over waking unmasked steps only, and $W^\ell$ and
-$B^{\ell-1}$ share $\lambda_\ell$ so alignment is untouched: the decay removes a fixed fraction
-of what learning currently adds. It is the paper's design principle --- control signals must
-be self-referenced, never absolute --- applied at the synapse.
+where $u^\ell$ is the mean magnitude of the data-driven, post-optimiser, \emph{pre-decay}
+waking increment applied to layer $\ell$ (so the decay never feeds its own drive), the EMA
+(coefficient $0.02$) runs over waking unmasked steps only, $\epsilon=10^{-12}$ floors the
+denominator, and $W^\ell$ and $B^{\ell-1}$ share $\lambda_\ell$ so alignment is untouched: the
+decay removes a fixed fraction of what learning currently adds. $\rho$ is the only control
+target; $\lambda_{\max}$, the EMA coefficient and $\epsilon$ are global safeguards never tuned
+per dataset. Isolation and rotation decide \emph{where} and \emph{when} to consolidate; the
+controller decides \emph{how strongly} to update as the scale changes, by the principle behind
+every control signal in this paper --- novelty as a fast-over-slow error ratio, homeostasis
+as a unit's own use, decay as a drive-over-weight ratio: all referenced to the learner's own
+current state, none absolute.
 
 \begin{table}[t]
 \centering\footnotesize
-\caption{\textbf{One dimensionless constant replaces per-dataset decay tuning.} Sequential /
+\caption{\textbf{One dataset-independent ratio target replaces per-dataset decay tuning.} Sequential /
 static accuracy under the tuned fixed decay ($10^{-3}$; $10^{-4}$ with $3\times$ targets as
 the CIFAR-100 rescue) and the controller \eqref{eq:controller} at $\rho=0.25$ everywhere (drive
 form; a gradient-referenced form behaves equivalently, Appendix~\ref{app:controller}). Full
@@ -488,7 +515,7 @@ split CIFAR-100 & $1.4\pm0.5$ & $1.1\pm0.1$ & $\mathbf{3.4\pm0.6}$ & $\mathbf{3.
 \end{tabular}
 \end{table}
 
-\paragraph{One constant, every dataset (Table~\ref{tab:controller}).} With the same $\rho$
+\paragraph{One ratio target, every dataset (Table~\ref{tab:controller}).} With the same $\rho$
 on every dataset the controller concedes $1$--$3$ sequential points to the per-dataset tuned
 value and wins on every static axis by $0.5$--$3.6$ --- the fixed decay had under-regularised
 every thick-signal regime --- with $96.1\pm0.2$ the best i.i.d.\ accuracy of the two-layer
@@ -520,8 +547,9 @@ $95.6\to95.3\to91.8$ static). The residual toll is architectural: ResNet-style s
 product with a Kolen--Pollack feedback twin and the shared decay, replay-masked under the same
 pre-or-post-asleep rule --- restore the thick error path, and the five-hidden-layer system
 returns to the two-layer record on both axes ($91.5\pm0.4/96.2\pm0.3$; $96.3\pm0.2$ static at
-depth four). The bypass alone also rescues the fixed decay ($91.3/93.6$ at depth five),
-locating the collapse in error-path attenuation; the controller adds its static margin on top.
+depth four). The bypass alone also rescues the fixed decay ($91.3/93.6$ at depth five), consistent with
+error-path attenuation being a principal contributor to the collapse; the controller adds its
+static margin on top.
 BP+ER at the same widths is depth-insensitive ($\approx\!88$--$89$) but forgets $2$--$3\times$
 more ($F\approx13$--$14$ vs.\ $5$--$7$); the local system with skips and the controller beats
 it at every depth tested. The two starvations are not interchangeable: on CIFAR-100 depth is a
@@ -555,7 +583,8 @@ method; the energy figure is an arithmetic proxy. The primitives all have ancest
 contribution is their combination, with an exactness argument and a measured boundary. Within
 these limits the conclusion stands: consolidation does not require an offline phase --- the
 learner consolidates while it infers, above the strongest offline-rehearsal schedule at
-$1.2\times$ its replay samples. Code will be released.
+$2.4\times$ its replay samples and within a point of it at a matched budget. Code will be
+released.
 
 \bibliographystyle{plainnat}
 \begin{thebibliography}{99}\small
@@ -608,6 +637,8 @@ $1.2\times$ its replay samples. Code will be released.
 
 \bibitem[McKee et al.(2026)]{mckee2026} McKee, K., Hazy, T., Zheng, Y., Bugaud, Z., Miconi, T. (2026). Cortex-inspired continual learning: Unsupervised instantiation and recovery of functional task networks. \emph{arXiv:2604.24637}.
 
+\bibitem[Payeur et al.(2021)]{payeur2021} Payeur, A., Guerguiev, J., Zenke, F., Richards, B.A., Naud, R. (2021). Burst-dependent synaptic plasticity can coordinate learning in hierarchical circuits. \emph{Nature Neuroscience}, 24:1010--1019.
+
 \bibitem[Pham et al.(2021)]{pham2021} Pham, Q., Liu, C., Hoi, S. (2021). DualNet: Continual learning, fast and slow. In \emph{NeurIPS} 34.
 
 \bibitem[Robinson et al.(2022)]{robinson2022} Robinson, B.S., Lau, C.W., New, A., Nichols, S.M., Johnson, E.C., Wolmetz, M., Coon, W.G. (2022). Continual learning benefits from multiple sleep mechanisms: NREM, REM, and synaptic downscaling. \emph{arXiv:2209.05245}.
@@ -622,13 +653,13 @@ $1.2\times$ its replay samples. Code will be released.
 
 \bibitem[Shen et al.(2024)]{shen2024} Shen, J., Ni, W., Xu, Q., Tang, H. (2024). Efficient spiking neural networks with sparse selective activation for continual learning. In \emph{AAAI} 38, pp.\ 611--619.
 
-\bibitem[Sorrenti et al.(2024)]{sorrenti2024} Sorrenti, A., Bellitto, G., Proietto Salanitri, F., Pennisi, M., Palazzo, S., Spampinato, C. (2024). Wake--sleep consolidated learning. \emph{arXiv:2401.08623}.
+\bibitem[Sorrenti et al.(2025)]{sorrenti2024} Sorrenti, A., Bellitto, G., Proietto Salanitri, F., Pennisi, M., Palazzo, S., Spampinato, C. (2025). Wake--sleep consolidated learning. \emph{IEEE Transactions on Neural Networks and Learning Systems}, 36(7):12668--12679.
 
 \bibitem[Tadros et al.(2022)]{tadros2022} Tadros, T., Krishnan, G.P., Ramyaa, R., Bazhenov, M. (2022). Sleep-like unsupervised replay reduces catastrophic forgetting in artificial neural networks. \emph{Nature Communications}, 13:7742.
 
 \bibitem[Tilley et al.(2023)]{tilley2023} Tilley, M.J., Miller, M., Freedman, D.J. (2023). Artificial neuronal ensembles with learned context dependent gating. In \emph{ICLR}.
 
-\bibitem[Tononi and Cirelli(2014)]{tononi2014} Tononi, G., Cirelli, C. (2014). Sleep and the price of plasticity. \emph{Neuron}, 81:12--34.
+\bibitem[Tononi and Cirelli(2014)]{tononi2014} Tononi, G., Cirelli, C. (2014). Sleep and the price of plasticity: From synaptic and cellular homeostasis to memory consolidation and integration. \emph{Neuron}, 81:12--34.
 
 \bibitem[Vitter(1985)]{vitter1985} Vitter, J.S. (1985). Random sampling with a reservoir. \emph{ACM Transactions on Mathematical Software}, 11:37--57.
 
@@ -645,18 +676,21 @@ $1.2\times$ its replay samples. Code will be released.
 \section{Proofs}
 \label{app:proofs}
 \begin{proof}[Proof of Proposition~\ref{prop:pre}]
-By induction on $\ell$. Assume $a^{\ell-1}$ is unchanged (true for $\ell=1$ since $a^0=x$).
-For any unit $i$, $\widehat z^\ell_i-z^\ell_i=g^\ell\sum_j\Delta^\ell_{ij}a^{\ell-1}_j(x)$, and
-each term vanishes: if $a^{\ell-1}_j(x)\neq0$ then $\Delta^\ell_{ij}=0$, otherwise
-$a^{\ell-1}_j(x)=0$. Hence $z^\ell$, and $a^\ell$ through \eqref{eq:forward}, are unchanged;
-the induction closes at the output layer.
+By induction on $\ell$, for every sample $b$. Assume $a^{\ell-1}_{\cdot,b}$ is unchanged
+(true for $\ell=1$ since $a^0_{\cdot,b}=x_b$). For any unit $i$,
+$\widehat z^\ell_{i,b}-z^\ell_{i,b}=\sum_j\Delta^\ell_{ij}a^{\ell-1}_{j,b}$, and each term
+vanishes: if $j\in\mathcal{A}^{\ell-1}(X)$ then $\Delta^\ell_{ij}=0$, otherwise
+$a^{\ell-1}_{j,b}=0$ for every $b$. Hence $z^\ell_{\cdot,b}$, and $a^\ell_{\cdot,b}$ through
+\eqref{eq:forward}, are unchanged; the induction closes at the last hidden layer, and at the
+output layer whenever the readout row satisfies the same condition.
 \end{proof}
 \begin{proof}[Proof of Proposition~\ref{prop:post}]
-A unit outside $\mathcal{A}^\ell(x)$ contributes $a^\ell_i(x)=0$. After the update its
-pre-activation is $z^\ell_i+\delta_i$; under the stated margin it is still excluded by $\Phi_k$
-(or rectified to zero), so $a^\ell_i(x)=0$ still, every other unit's input is untouched by the
-argument of Proposition~\ref{prop:pre}, and the layer's activities are identical. The readout
-row is excluded from both propositions because it is deliberately kept plastic.
+A unit outside $\mathcal{A}^\ell(X)$ contributes $a^\ell_{i,b}=0$ on every sample. After the
+update its pre-activation on sample $b$ is $z^\ell_{i,b}+\delta_{i,b}$; under the stated
+margin it is still excluded by $\Phi_k$ (or rectified to zero), so $a^\ell_{i,b}=0$ still,
+every other unit's input is untouched by the argument of Proposition~\ref{prop:pre}, and the
+layer's activities are identical. The readout row is excluded from both propositions in the
+default system because it is deliberately kept plastic.
 \end{proof}
 
 \section{The price of the substrate}
@@ -713,11 +747,13 @@ learned. Split CIFAR-10 uses $32{\times}32$ luminance so that distance-dependent
 its image geometry. The buffer uses reservoir writing; the night reference uses a $256$--$128$
 core, its preferred width in our sweeps. Runs are deterministic at a fixed CPU thread count.
 Replay cost is reported in samples ($R$ = replay batches $\times$ batch size). The night costs
-$480\times256\approx1.2\times10^5$ samples per run; continuous local sleep with micro-batches
-of $8$ costs $18{,}760\times8\approx1.5\times10^5$ ($1.2\times$ the night), and
-pressure-triggered bursts with batch $64$ cost $1.8\times10^5$ ($1.4\times$); halving the
-cadence with doubled batches costs $1.3$ points ($91.4\pm0.3$), so the system prefers
-consolidation to run continuously. Figure~\ref{fig:frontier} draws the operating frontier of
+$480\times256\approx1.2\times10^5$ samples per run. The headline configuration (one
+$16$-sample micro-batch per waking batch) costs $18{,}760\times16\approx3.0\times10^5$
+($2.4\times$ the night) for $92.7\pm0.3$; eight-sample micro-batches cost $1.5\times10^5$
+($1.2\times$) for $91.8\pm0.3$; pressure-triggered bursts with batch $64$ cost
+$1.8\times10^5$ ($1.4\times$) for $89.1\pm1.1$; halving the cadence with doubled batches
+costs $1.3$ points ($91.4\pm0.3$). The system prefers consolidation to run continuously in
+small batches: accuracy is bought by \emph{frequency}, not by samples. Figure~\ref{fig:frontier} draws the operating frontier of
 the record substrate.
 
 \begin{figure}[h]
