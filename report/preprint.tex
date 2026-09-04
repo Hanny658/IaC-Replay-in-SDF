@@ -542,9 +542,12 @@ over BP+ER $+3.5$ ($[+2.7,+4.2]$).
 Replay cost is measured in samples ($R_s$ = batches $\times$ batch size) and synaptic work.
 The night costs $R_s = 480\times256 \approx 1.2\times10^5$ samples. The headline configuration
 (one $16$-sample micro-batch per waking batch, $92.7\pm0.3$) costs
-$18{,}760\times16\approx3.0\times10^5$ samples ($2.4\times$ the night); eight-sample
-micro-batches cost $1.5\times10^5$ ($1.2\times$) for $91.8\pm0.3$; pressure-triggered bursts
-with batch $64$ cost $1.8\times10^5$ ($1.4\times$) for $89.1\pm1.1$.
+$18{,}760\times16\approx3.0\times10^5$ samples ($2.4\times$ the night). Two schedules meet
+the night's budget within $1.2\times$: eight-sample micro-batches at every waking batch
+($1.5\times10^5$, $91.8\pm0.3$) and $16$-sample micro-batches at every second one
+($1.5\times10^5$, $91.7\pm1.0$ sequential, $93.5\pm0.4$ static); pressure-triggered bursts
+with batch $64$ cost $1.8\times10^5$ ($1.4\times$) for $89.1\pm1.1$. Accuracy is bought by
+the frequency of small isolated updates rather than by replayed samples.
 
 % ---------------------------------------------------------------- 5
 \section{Results}

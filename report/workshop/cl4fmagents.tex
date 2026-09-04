@@ -345,8 +345,9 @@ on ours) and far above unmasked interleaved ER at the same budget ($89.7\pm1.1$)
 ($89.3\pm0.8$). Adding a night on top of continuous local sleep produces no detectable
 improvement ($92.7\pm0.4$): once consolidation runs during wake, the offline phase is
 redundant at this buffer size. The headline configuration replays $2.4\times$ the night's
-samples; at a matched $1.2\times$ budget the eight-sample micro-batch reaches $91.8\pm0.3$
-(Figure~\ref{fig:batch}; Appendix~\ref{app:cost}).
+samples; at a matched $1.2\times$ budget the system still reaches $91.7$--$91.8$
+(eight-sample micro-batches every batch, or $16$-sample ones every second batch;
+Figure~\ref{fig:batch}, Appendix~\ref{app:cost}).
 
 \paragraph{Isolation makes micro-batch replay affordable.} Figure~\ref{fig:batch} (left):
 masked refractory replay is flat in replay batch size from $256$ down to $8$
@@ -782,11 +783,13 @@ exception. Unit-level pressure decides when replay bursts run.}
 Replay cost is reported in samples ($R$ = replay batches $\times$ batch size). The night costs
 $480\times256\approx1.2\times10^5$ samples per run. The headline configuration (one
 $16$-sample micro-batch per waking batch) costs $18{,}760\times16\approx3.0\times10^5$
-($2.4\times$ the night) for $92.7\pm0.3$; eight-sample micro-batches cost $1.5\times10^5$
-($1.2\times$) for $91.8\pm0.3$; pressure-triggered bursts with batch $64$ cost
-$1.8\times10^5$ ($1.4\times$) for $89.1\pm1.1$; halving the cadence with doubled batches
-costs $1.3$ points ($91.4\pm0.3$). The system prefers consolidation to run continuously in
-small batches: accuracy is bought by \emph{frequency}, not by samples. Figure~\ref{fig:frontier} draws the operating frontier of
+($2.4\times$ the night) for $92.7\pm0.3$. Two schedules meet the night's budget within
+$1.2\times$: eight-sample micro-batches at every waking batch ($1.5\times10^5$,
+$91.8\pm0.3$) and $16$-sample micro-batches at every second one ($1.5\times10^5$,
+$91.7\pm1.0$ sequential, $93.5\pm0.4$ static); pressure-triggered bursts with batch $64$
+cost $1.8\times10^5$ ($1.4\times$) for $89.1\pm1.1$, and halving the cadence with doubled
+batches costs $1.3$ points ($91.4\pm0.3$). Accuracy is bought by \emph{frequency} of small
+isolated updates rather than by replayed samples. Figure~\ref{fig:frontier} draws the operating frontier of
 the record substrate.
 
 \begin{figure}[h]
