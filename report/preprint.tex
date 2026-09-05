@@ -58,7 +58,8 @@ through degrees of freedom the current batch exposes as unused. On class-increme
 resulting system reaches $\mathbf{91.6\pm0.3\%}$ (six seeds) with no offline phase, exceeding
 the best offline-night schedule ($89.2\pm1.7\%$) at $2.4\times$ the night's replay samples
 (and reaching $91.1\pm0.4\%$ within $1.2\times$ of that budget with eight-sample
-micro-batches); reversing the protected direction (guarding past memories
+micro-batches); in a single pass over the stream the lead widens ($91.8\%$ against $88.7\%$ for
+BP+ER and $75.1\%$ for the night); reversing the protected direction (guarding past memories
 while learning the present, as in null-space methods) costs fourteen points under identical machinery; rotation carries the gain (rotation with
 unmasked replay reaches $91.5\pm0.3\%$; isolation adds $0.1$--$0.3$ points at replay batches of
 $16$ to $4$, the guarantee, and at two-sample batches the absence of the collapse that unmasked
@@ -613,7 +614,10 @@ beside every waking batch reaches $\mathbf{91.6\pm0.3\%}$ (six seeds) with no of
 --- above the best offline night ($89.2\pm1.7\%$ on the night's preferred narrow substrate;
 $89.0\pm3.5$, highly variable across seeds, on ours; paired margins $+2.5$ $[+1.3,+4.8]$ and
 $+2.6$ $[+0.2,+5.2]$), above unmasked interleaved ER at the same budget ($87.5\pm0.8$ under
-Adam, $85.4\pm3.5$ under SGD) and above BP+ER ($88.8\pm0.3$; $+2.8$ $[+2.5,+3.2]$). Halving
+Adam, $85.4\pm3.5$ under SGD) and above BP+ER ($88.8\pm0.3$; $+2.8$ $[+2.5,+3.2]$). In a single pass over the stream (one epoch per task, three seeds) the ordering sharpens:
+$91.8\pm0.2$ against $88.7\pm0.3$ for BP+ER, $76.0\pm20.1$ for unmasked ER and $75.1\pm3.5$ for
+the offline night, whose one night per task is too few (Table~\ref{tab:ablation}).
+Halving
 the cadence with $16$-sample batches costs $0.4$ ($91.2\pm0.2$). Adding a night on top of
 continuous local sleep adds $0.8$ ($92.4\pm0.3$ vs.\ $91.6\pm0.3$): once consolidation runs
 during wake, the offline phase is nearly redundant at this buffer size. At very small buffers
@@ -783,35 +787,36 @@ was first established.
 \caption{\textbf{Component ablation of the consolidation mechanism} on the record substrate
 ($512$--$256$/$10\%$; backprop references dense $256$--$128$). Sequential $=$ final accuracy
 on split-MNIST; static $=$ i.i.d.\ MNIST (the axis that must not degrade). Dashes:
-combination not applicable. Held-out split; headline rows carry six seeds, the rest three.}
+combination not applicable; blank: not run. Single pass $=$ one epoch per task, otherwise
+identical. Held-out split; headline rows carry six seeds, the rest three.}
 \label{tab:ablation}
-\small
-\begin{tabular}{@{}lcc@{}}
+\footnotesize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccc@{}}
 \toprule
-Variant & Sequential & i.i.d.\ (static) \\
+Variant & Sequential & i.i.d.\ (static) & Seq., single pass \\
 \midrule
-\textbf{full system}: isolated replay $+$ always-on rotation (heavy-ball SGD) & $\mathbf{91.6\pm0.3}$ & $94.1\pm0.2$ \\
-\quad rotation gated by relative novelty, committed to bouts & $91.8\pm0.3$ & $94.4\pm0.3$ \\
-\quad rotation gated per batch & $87.5\pm1.6$ & $94.7\pm0.1$ \\
-$+$ two-timescale anchor ($\lambda{=}\mu{=}3{\cdot}10^{-4}$), rotation always on & $91.7\pm0.0$ & $93.8\pm0.3$ \\
-$-$ rotation (same mask, Eq.~\ref{eq:mask}, natural silence only) & $88.0\pm0.7$ & $95.3\pm0.2$ \\
-$-$ isolation, $-$ rotation (unmasked interleaved replay) & $85.4\pm3.5$ & $95.8\pm0.3$ \\
-$-$ isolation, $+$ rotation (rotation alone) & $91.5\pm0.3$ & $93.7\pm0.3$ \\
-readout-only replay (hidden layers take no replay update) & $41.7\pm10.9$ & $82.7\pm0.3$ \\
-random rotation (matched suppression count) & $91.0\pm0.8$ & $92.1\pm0.2$ \\
-$-$ replay (no buffer) & $19.4\pm0.0$ & $95.1\pm0.0$ \\
+\textbf{full system}: isolated replay $+$ always-on rotation (heavy-ball SGD) & $\mathbf{91.6\pm0.3}$ & $94.1\pm0.2$ & $91.8\pm0.2$ \\
+\quad rotation gated by relative novelty, committed to bouts & $91.8\pm0.3$ & $94.4\pm0.3$ &  \\
+\quad rotation gated per batch & $87.5\pm1.6$ & $94.7\pm0.1$ &  \\
+$+$ two-timescale anchor ($\lambda{=}\mu{=}3{\cdot}10^{-4}$), rotation always on & $91.7\pm0.0$ & $93.8\pm0.3$ &  \\
+$-$ rotation (same mask, Eq.~\ref{eq:mask}, natural silence only) & $88.0\pm0.7$ & $95.3\pm0.2$ &  \\
+$-$ isolation, $-$ rotation (unmasked interleaved replay) & $85.4\pm3.5$ & $95.8\pm0.3$ & $76.0\pm20.1$ \\
+$-$ isolation, $+$ rotation (rotation alone) & $91.5\pm0.3$ & $93.7\pm0.3$ &  \\
+readout-only replay (hidden layers take no replay update) & $41.7\pm10.9$ & $82.7\pm0.3$ &  \\
+random rotation (matched suppression count) & $91.0\pm0.8$ & $92.1\pm0.2$ &  \\
+$-$ replay (no buffer) & $19.4\pm0.0$ & $95.1\pm0.0$ & $18.1\pm0.7$ \\
 \midrule
-masked Adam, moments confined to the mask & $91.5\pm0.4$ & $94.1\pm0.1$ \\
-masked Adam, moments leaking outside the mask & $91.6\pm0.6$ & $94.0\pm0.3$ \\
-momentum $0$ (pure SGD; $\eta$ and replay gain re-tuned, else chance) & $88.4\pm0.5$ & $89.4\pm0.3$ \\
+masked Adam, moments confined to the mask & $91.5\pm0.4$ & $94.1\pm0.1$ &  \\
+masked Adam, moments leaking outside the mask & $91.6\pm0.6$ & $94.0\pm0.3$ &  \\
+momentum $0$ (pure SGD; $\eta$ and replay gain re-tuned, else chance) & $88.4\pm0.5$ & $89.4\pm0.3$ &  \\
 \midrule
-offline night instead of concurrent replay, same substrate & $89.0\pm3.5$ & --- \\
-\quad the same night on its preferred narrow substrate & $89.2\pm1.7$ & --- \\
-mirror direction: protect the past & $78.0\pm3.2$ & $91.7\pm0.6$ \\
-soft rotation: gain $0.5$ instead of $0$ & $89.9\pm0.7$ & $84.3\pm1.0$ \\
+offline night instead of concurrent replay, same substrate & $89.0\pm3.5$ & --- & $75.1\pm3.5$ \\
+\quad the same night on its preferred narrow substrate & $89.2\pm1.7$ & --- &  \\
+mirror direction: protect the past & $78.0\pm3.2$ & $91.7\pm0.6$ &  \\
+soft rotation: gain $0.5$ instead of $0$ & $89.9\pm0.7$ & $84.3\pm1.0$ &  \\
 \midrule
-unmasked ER at the same budget (Adam) & $87.5\pm0.8$ & $95.1\pm0.2$ \\
-backprop ($+$ER sequential; plain static), dense & $88.8\pm0.3$ & $97.4\pm0.1$ \\
+unmasked ER at the same budget (Adam) & $87.5\pm0.8$ & $95.1\pm0.2$ &  \\
+backprop ($+$ER sequential; plain static), dense & $88.8\pm0.3$ & $97.4\pm0.1$ & $88.7\pm0.3$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1087,8 +1092,8 @@ measured on a held-out tenth of the training data (training data only during dev
 never consulted by any selection, never trained on in the reported runs; two independent
 splits for the headline rows). Development-phase numbers sit $1.1$ points above the reported
 ones on average and rank-correlate with them at Spearman $\rho=0.97$
-(Appendix~\ref{app:val}). The protocol is five epochs per task, not a single pass
-(single-pass results in Appendix~\ref{app:probes}). All results are at MLP scale on
+(Appendix~\ref{app:val}). The protocol is five epochs per task; a single pass keeps the lead
+(Table~\ref{tab:ablation}, Appendix~\ref{app:probes}). All results are at MLP scale on
 MNIST/CIFAR variants with three seeds (six on the headline rows); BP+ER --- an external
 reference, not a state-of-the-art claim; stronger replay baselines such as DER++ are not
 included --- keeps a $0.5$-point lead on feature-based CIFAR with both sides at their best

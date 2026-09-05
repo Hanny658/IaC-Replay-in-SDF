@@ -585,6 +585,16 @@ sizes"（workshop K / preprint H）+ 图 `fig_isomargin.pdf`（`report/make_fig_
 图 2 左面板保持 4–256（加 batch 2 会压扁 88–92 区间），batch 2 由附录图承担。Workshop 主文为守住
 第 8 页缩了 Discussion/Limitations 的措辞（无主张改动）。
 
+### 单遍流结果提到正文（2026-09-06 晨，纯文字）
+
+用户问"主张被削弱后还能投吗"，结论：工作坊层面可投（核心论点、机制对照、形式保证、held-out 协议都在），
+最贴题的证据是单遍流（一遍过、无离线相位、领先所有对照），此前只在 Limitations 括号里引到附录。改动：两版
+Results 首段加一句（91.8±0.2 vs BP+ER 88.7±0.3、夜间 75.1±3.5，one night per task is too few），Table 1
+加第四列 "Seq., single pass"（full system / unmasked ER 76.0±20.1 / no buffer 18.1 / night / BP+ER 五格，
+其余留空；preprint 表改 footnotesize + tabcolsep 4pt 才不溢出），摘要加半句，Limitations 改指向表 1；附录的
+Single-pass 段保留。Workshop 为守第 8 页再缩了 Component prices / 控制器 / 深度 / CIFAR 迁移几句的措辞，
+图 2 宽 .38、图 3 宽 .64。不加 DER++：截稿前不动新代码。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，
