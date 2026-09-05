@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-Local copies of all papers (txt) in `C:/Users/hanny/.claude/jobs/b260108a/tmp/lit/` (job tmp, may vanish).
+Local copies of all papers (txt) were kept in a temporary job directory (may vanish).
 
 1. Gating. XdG (Masse 2018 PNAS): random fixed gates, 80-86.7% of units off per task, task ID given
    externally (PFC-like). LXDG (Tilley, Miller, Freedman ICLR 2023): gates are outputs of trainable

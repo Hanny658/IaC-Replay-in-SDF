@@ -1,8 +1,8 @@
-"""Dataset loaders for Assignment 2.
+"""Dataset loaders (course-pipeline helpers, copied so this repository is self-contained).
 
 Three datasets, chosen to span three difficulty tiers rather than three cancers:
   * WDBC     - Wisconsin Diagnostic Breast Cancer (569 x 30), label M=1 (malignant), B=0.
-  * NUH      - NUH ovarian-cancer blood-test data (Tan, Quek, Ng, Razvi 2008), group g2
+  * NUH      - a private clinical ovarian-cancer blood-test panel (not included), group g2
                (28 features, 55 train / 54 test after de-duplication).
   * SUPPORT2 - SUPPORT study, in-hospital mortality of seriously ill adults (9105 patients).
                Added because WDBC is saturated (every model scores AUC ~0.99) and NUH is too

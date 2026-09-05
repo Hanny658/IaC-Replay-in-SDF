@@ -2,7 +2,7 @@
 
 An experiment ladder toward a maximally brain-like neural network — judged on a Pareto of
 accuracy × energy proxy × brain-likeness, explicitly *not* SOTA-chasing. Built during (and beside)
-an NTU AI6124 assignment; the course pipeline lives in a separate repository, and the shared
+a university course assignment; the course pipeline lives in a separate repository, and the shared
 helpers (`data / evaluate / metrics / preprocess / models/base / models/torch_utils`) are copied
 here so this repo is self-contained.
 
@@ -62,5 +62,5 @@ Key configs: `g9a_w512s5_cad2_br64` (best, no night), `g9a_w512s5_br8` (cheapest
 `g9a_w512s5_pburst16_t64` (pressure-triggered bursts), `ctx_nrem_rand_1000` (night reference).
 
 Data notes: MNIST idx `.gz` files go in `tmp/dataset_cache/mnist/`; SUPPORT2 auto-downloads from
-the UCI URL in `src/data.py`; the NUH ovarian dataset is private and is not included (only
+the UCI URL in `src/data.py`; the private clinical ovarian dataset is not included (only
 `run_bio.py` needs it). Python 3.13 + torch (CPU), pandas, scikit-learn.
