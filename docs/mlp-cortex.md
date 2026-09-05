@@ -506,6 +506,31 @@ Table 2 进附录；hyperref 彩色无边框；Fig. 3/附录图字号上调。Wo
 scale 0.72、Fig. 2 宽 .43、Fig. 3 宽 .72）。**教训**：5 worker × OMP=4 在 8 核笔记本上每进程只拿到 0.8 核
 （第一次启动 32 min 零完成）；改为 OMP=1 × 9 worker 后每进程 1 核、MNIST 本地 run ≈ 14 min。
 
+### 第三轮手稿评审（Weak Accept 方向的收尾，2026-09-05 晚，12 运行）
+
+**四项收尾**：(1) 表 7（CIFAR held-out）两行 static 数据曾显示 "28.9±1.0STA / 15.4±4.2STA"——是
+`fill_numbers.py` 占位符前缀冲突（VCIFREFR 被替换进 VCIFREFRSTA）造成的转录错误；回查原始 pickle 后填入
+真实 static 值 28.0±1.2 / 30.0±1.9，表题改为"sequential; static for the two rows so marked"。**教训**：占位符
+不能互为前缀。(2) 四组合归因统一：isolation 单独 +1.8（88.8 vs 87.0）、有 rotation 时 +0.6；Discussion/
+Conclusion 里 "−5.7" 改为 1.8/0.6；Fig. 5 frontier 点 "−isolation" 改标 "−isolation, −rotation" 并加
+"−isolation"（仅轮换）点；replay-gain 讨论注明只约束无轮换对照、不估计 isolation 贡献；摘要写明
+"rotation carries most of the gain"。(3) 措辞收紧：摘要与 Discussion 的 "near-exactly end to end" → "当前输入、
+当前抑制掩码下的隐层计算不变：证明通道上精确，其余 99.7% 的清醒隐层码不变"；"no replay update touches the
+units the present input uses" → "replay leaves the hidden activities unchanged (exactly on the proven
+channels, within the margin elsewhere)"（式 (3) 允许沉默前突触→活跃后突触的更新）；理论只覆盖训练时带抑制
+的计算、评估时抑制关闭；readout-only "at chance / entirely" → "falls to 27.3±15.1 (ten classes)；readout-only
+replay cannot account for the full system's accuracy, hidden-layer replay updates are essential"；
+"affordable" → "at a higher total compute (11× the night's wall-clock, unoptimised)"；预算计数改为 "within
+1.2× (22% more) …, 39× the night's updates (batch 8) or 19.5× (batch 16 every second batch)"；单遍流
+"ordering survives" → "keeps its lead over every tested control, night falls below BP+ER"；preprint 5.3 标题
+"state-free isolation wins" → "the least optimiser state wins"，Section 8 "Why isolation stabilises
+micro-batches" 按四格表重写，附录 D/F 的 unmasked 对照注明 rotation-free。(4) **held-out rotation-only**
+（`val_g26_ctrl_rot_noiso[_static]`，6 种子）：91.5±0.3 / 93.7±0.3 vs 默认 91.6±0.3 / 94.1±0.2——次可加性
+在 held-out 上复现；进入 Table 5 与 Results held-out 段。**通读**：两版 PDF 全文过了一遍（pdftotext），修正
+Fig. 2 标题 "0.6–0.7"→"0.6"、双括号、preprint 控制器 "at most 1.4" → "0.5–3（gradient/drive 两种形式）"、
+"provably cannot serve" 软化等。Workshop 主文守住 8 页，Fig. 1 scale 0.85、Fig. 3 宽 .74（图字号优先于文字，
+用 Section 5/Discussion 的压缩换回）。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，
