@@ -563,6 +563,28 @@ Spearman 0.973、均差 −1.1。
 Workshop 主文守住 8 页。**教训**：占位符互为前缀会串填（VCIFREFR/VCIFREFRSTA）；Windows 写的清单文件
 带 \r 会让 shell 监视器计数为零；8 核笔记本上 OMP=1 × 8 worker 最有效。
 
+### 补充实验：isolation 在 replay batch 2 上的边际（2026-09-06 晨，15 run）
+
+**动机**：协议切换后 isolation 在 rotation 之上的精度边际只有 +0.1/+0.2/+0.9（batch 16/8/4，后者
+仅 3 个 noiso 种子），想看曲线最小的一端是否延续"批越小价值越大"。**运行**：`g17_sgd_br2_s10`
+与新配置 `g26_ctrl_rot_noiso_br2`（`run_seq.py` 的 noiso 列表补 b=2、g17 字典补 `sgd_br2`）各 6 种子，
+加 `g26_ctrl_rot_noiso_br4` 种子 3–5，全部 `--val`；8 个 OMP=1 worker 约 22 分钟。
+
+**结果**：（1）趋势不延续：batch 4 补到 6 对后配对边际 +0.3 [−0.5, +1.2]（noiso 89.3±0.7，原 3 种子
+88.8±0.4 偏低），于是 16/8/4 的边际是 0.1/0.3/0.3，全部在种子噪声内，"growing as the micro-batch
+shrinks"撤回，各处范围 0.1–0.9 改为 0.1–0.3。（2）batch 2 两者都大幅退化，但方式不同：isolated
+79.0±3.2（F 21.5±4.2），六个种子全在 75.5–84.3；unmasked 分叉——三个种子 82.5–84.8（略高于同种子的
+isolated：+0.3/+1.8/+8.1），一个 58.2，两个塌到 9.9（chance）。配对均值 +24 [−0.2, +48.5] 只描述失效
+模式，不当作边际引用。**结论措辞**：isolation 的精度价值不是边际而是去掉一个失效模式；每个 batch
+尺寸下它买到的是保证（live computation 不变），在 batch 2 处 rotation 的容忍度耗尽时体现为优雅退化。
+泄漏到 live coalition 的 replay 不是纯损失（存活种子更高），但打开了 mask 关闭的失效通道。
+
+**文稿**：两版摘要、引言贡献 1、Results "What rotation and isolation each buy"、图 2 说明、Discussion
+/Honest limits、preprint §8 "Why micro-batches work" 更新；新附录 "Isolation across replay batch
+sizes"（workshop K / preprint H）+ 图 `fig_isomargin.pdf`（`report/make_fig_isomargin.py`，`MLPC_VAL=1`）。
+图 2 左面板保持 4–256（加 batch 2 会压扁 88–92 区间），batch 2 由附录图承担。Workshop 主文为守住
+第 8 页缩了 Discussion/Limitations 的措辞（无主张改动）。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，

@@ -609,6 +609,7 @@ CONFIGS = {
            "sgd_br16_night": dict(cadence=1, batch_replay=16, night=True),
            # micro-batch curve (br16 = the existing refr cell)
            "sgd_br4": dict(cadence=1, batch_replay=4),
+           "sgd_br2": dict(cadence=1, batch_replay=2),
            "sgd_br8": dict(cadence=1, batch_replay=8),
            "sgd_br64": dict(cadence=1, batch_replay=64),
            "sgd_br256": dict(cadence=1, batch_replay=256),
@@ -850,7 +851,7 @@ CONFIGS = {
     **{f"g26_ctrl_rot_noiso_br{b}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
                                          batch_wake=16, cadence=1, batch_replay=b, hidden=(512, 256),
                                          active_frac=0.10, opt="sgd", eta=0.02, mask="refractory", no_iso=True)
-       for b in (8, 4)},
+       for b in (8, 4, 2)},
     **{f"g26_gain_{name}_g10": dict(model="ctx", schedule="local", buffer=1000, policy="random",
                                     batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
                                     active_frac=0.10, opt="sgd", eta=0.02, mask=m, nrem_gain=10.0)

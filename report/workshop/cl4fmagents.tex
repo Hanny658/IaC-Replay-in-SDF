@@ -57,7 +57,8 @@ through degrees of freedom the current batch leaves unused. On class-incremental
 above the best offline-rehearsal schedule ($89.2\pm1.7\%$), at $2.4\times$ its replay samples;
 about $1.22\times$ of that budget, eight-sample micro-batches still reach $91.1\pm0.4\%$. Rotation
 carries the gain (rotation with unmasked replay reaches $91.5\pm0.3\%$); isolation adds
-$0.1$--$0.9$ points across replay batch sizes and the guarantee, $2.6$ without rotation. The
+$0.1$--$0.3$ points at replay batches of $16$ to $4$ and the guarantee, $2.6$ without rotation,
+and at two-sample batches removes a collapse mode. The
 ordering transfers to split CIFAR-10, and every reported number is measured on held-out training
 data never used for any decision. A
 drive-referenced controller for the rule's synaptic decay replaces per-dataset tuning with one
@@ -100,8 +101,9 @@ Under \kwta{} dynamics this leaves the hidden computation exactly invariant for
 silent-presynaptic and suppressed units (Propositions~\ref{prop:pre}--\ref{prop:post}); we
 measure how nearly it holds elsewhere and end to end. With rotation on, replay micro-batches
 of $8$--$16$ samples suffice, where unmasked replay without rotation and offline schedules
-degrade; isolation adds $0.1$--$0.9$ points there ($2.6$ without rotation) and the guarantee,
-and replay confined to the readout falls to $42\%$: hidden-layer replay updates are essential.
+degrade; isolation adds $0.1$--$0.3$ points there ($2.6$ without rotation), the guarantee, and
+at two-sample batches the absence of a collapse mode; replay confined to the readout falls to
+$42\%$: hidden-layer replay updates are essential.
 \item \textbf{Refractory rotation.} Units that fired on the current batch sit out the next
 competition. This alternation --- the algorithmic counterpart of the ON/OFF requirement in
 \citet{driessen2026} --- widens the consolidable channel from $\approx0.25$ to $0.53$ of the
@@ -394,15 +396,18 @@ system is flat in replay batch size from $256$ down to $8$ ($91.6\pm0.5\to91.1\p
 loses $1.9$ at $4$ ($89.7\pm0.7$); at batch $16$ unmasked replay without rotation sits at
 $85.4\pm3.5$, isolation without rotation at $88.0\pm0.7$, and the offline night falls from
 $89.0$ to $85.8\pm3.0$ when its batches shrink to $16$. The fourth cell --- rotation with
-unmasked replay --- reaches $91.5\pm0.3$ at batch $16$, $90.9\pm0.1$ at $8$ and $88.8\pm0.4$
+unmasked replay --- reaches $91.5\pm0.3$ at batch $16$, $90.9\pm0.1$ at $8$ and $89.3\pm0.7$
 at $4$: the factors are strongly sub-additive, rotation is the larger one ($+6.1$ alone,
-$+3.6$ on top of isolation), and isolation's marginal accuracy is $0.1$ $[-0.3,+0.5]$ at
-batch $16$, $0.2$ at $8$ and $0.9$ at $4$ --- growing as the micro-batch shrinks --- with
-$0.4$ on the static axis ($94.1$ vs.\ $93.7$). What isolation buys is the guarantee that, for
-the current input under its suppression mask, replay leaves the hidden activities unchanged
---- exactly on the proven channels, within the margin elsewhere; without it replay
-micro-batches can perturb the live coalition and the outcome rests on the rotation's
-tolerance of that perturbation.
+$+3.6$ on top of isolation), and isolation's seed-paired margin is $0.1$ $[-0.3,+0.5]$ at
+batch $16$, $0.3$ $[-0.2,+0.6]$ at $8$ and $0.3$ $[-0.5,+1.2]$ at $4$ --- within seed noise at
+every size --- with $0.4$ on the static axis ($94.1$ vs.\ $93.7$). At two-sample batches both lose
+heavily, but isolated replay degrades gracefully ($79.0\pm3.2$, every seed within $75$--$84$)
+where unmasked replay collapses in three of six seeds (Appendix~\ref{app:isomargin}):
+isolation's accuracy value is the removal of a failure mode, not a margin. What it buys at
+every batch size is the guarantee that, for the current input under its suppression mask,
+replay leaves the hidden activities unchanged --- exactly on the proven channels, within the
+margin elsewhere; without it replay micro-batches can perturb the live coalition and the
+outcome rests on the rotation's tolerance of that perturbation.
 
 \begin{figure}[t]
 \centering
@@ -411,9 +416,10 @@ tolerance of that perturbation.
 \caption{\textbf{Left (isolation):} split-MNIST accuracy against replay batch size, the
 number of updates fixed within each series (one per waking batch; $20$ per epoch for the
 night, whose samples therefore fall with its batch): the full system is flat down to $8$
-samples and loses $1.9$ at $4$; rotation with unmasked replay (dashed) trails it by $0.1$ to
-$0.9$, more as the batch shrinks; without rotation, unmasked and isolated replay and the
-offline night all degrade. \textbf{Right (timing):} accuracy against the number of waking
+samples and loses $1.9$ at $4$ ($12.7$ at $2$, Appendix~\ref{app:isomargin}); rotation with
+unmasked replay (dashed) trails it by $0.1$ to $0.3$, within seed noise, and collapses in half
+the seeds at batch $2$; without rotation, unmasked and isolated replay and the offline night
+all degrade. \textbf{Right (timing):} accuracy against the number of waking
 replay events: trickles and clocked bursts fail alike, pressure-triggered bursts (star) keep
 most of the accuracy at a third of the events, surprise triggering fires no events in this
 regime.}
@@ -581,29 +587,27 @@ while width pays (Appendix~\ref{app:controller}).
 
 \paragraph{What this offers agents.} The construction is a recipe: if an agent's representation is sparse enough that a batch leaves most units silent,
 and its learning rule yields a local error signal, consolidation can run in the silent degrees
-of freedom between the steps of the stream, with no separate offline phase --- in the
-supervised setting studied here, with a conditional guarantee on the computation in use, at
-a higher total compute ($11\times$ the night's training wall-clock, unoptimised). The
-invariance closes the channel through which consolidation would perturb the units the
-present stream is using; its accuracy value is $2.6$ points without rotation and
-$0.1$--$0.9$ with it (Table~\ref{tab:ablation}), so isolation's contribution is the guarantee.
-We treat the biology as motivating analogy, not mechanistic equivalence; the refractory rule
-mirrors the ON/OFF finding of \citet{driessen2026}, and the trigger dissociation is a
-testable prediction.
+of freedom between the steps of the stream, with no separate offline phase --- in the supervised setting studied here, with a conditional
+guarantee on the computation in use, at a higher total compute ($11\times$ the night's
+wall-clock, unoptimised). The
+invariance closes the channel through which consolidation would perturb the units in use; its
+accuracy value is $2.6$ points without rotation and
+$0.1$--$0.3$ with it (Table~\ref{tab:ablation}), so isolation's contribution is the guarantee,
+and at two-sample batches the collapse it prevents.
+We treat the biology as analogy, not mechanistic equivalence; the refractory rule mirrors the
+ON/OFF finding of \citet{driessen2026} and the trigger dissociation is a testable prediction.
 
 \paragraph{Limitations.} All results are at MLP scale on MNIST/CIFAR variants with three to
-six seeds; configurations were chosen on the official test sets, which served as the
-development set, and every reported number is on held-out training data (two independent
-splits for the headline rows); the protocol is five epochs per task (a single pass keeps
+six seeds; configurations were chosen on the official test sets (the development set) and every reported
+number is on held-out training data (two independent splits for the headline rows); the protocol is five epochs per task (a single pass keeps
 the lead, Appendix~\ref{app:negative}). The lead over the best offline night is $2.5$ points
 on the first split and $0.3$ on the second, where the night's seed variance vanished; the
 leads over BP+ER and unmasked replay hold on both. BP+ER (an external reference, not a
 state-of-the-art claim; DER++-style baselines are not included) keeps a $0.5$-point lead on
 feature-based CIFAR-10; rotation keeps a static price of $1$--$2$ points; CIFAR-100 is
-floor-regime; the energy figure is an arithmetic proxy. Within these limits the conclusion
-stands: consolidation does not require a separate offline phase; the learner consolidates
-between the steps of its stream, above the strongest offline schedule at $2.4\times$ its
-replay samples and still above it at $1.2\times$.
+floor-regime; the energy figure is an arithmetic proxy. Within these limits the conclusion stands: consolidation does not require a separate offline
+phase, and the learner stays above the strongest offline schedule at $2.4\times$ its replay
+samples and at $1.2\times$.
 Code can be found at \url{https://anonymous.4open.science/r/IaC-CL-with-no-offline}
 
 \clearpage
@@ -1100,6 +1104,37 @@ length lifts the local system to $5.8\pm0.9/7.7\pm1.1$ ($1024$--$512$): the thin
 wants capacity, not depth, and the static-axis wall ($6$--$8\%$ under every substrate change)
 says the front-end is the binding constraint there. All runs reproduce bitwise at a fixed CPU thread count; a different thread count
 changes the reduction order, which \kwta's discontinuity amplifies into a different trajectory.
+
+\section{Isolation across replay batch sizes}
+\label{app:isomargin}
+Figure~\ref{fig:isomargin} extends the left panel of Figure~\ref{fig:batch} to two-sample
+replay micro-batches and shows, per batch size, the seed-paired margin of the full system over
+rotation with unmasked replay (held-out split; six seeds at batches $2$, $4$ and $16$, three at
+$8$). From $16$ down to $4$ the margin is $0.1$ $[-0.3,+0.5]$, $0.3$ $[-0.2,+0.6]$ and $0.3$
+$[-0.5,+1.2]$: isolation costs nothing and buys nothing measurable in mean accuracy while the
+rotation keeps the live coalition tolerant of unmasked replay. At batch $2$ the replay
+gradient is too noisy for either system --- the isolated one falls to $79.0\pm3.2$
+(forgetting $21.5\pm4.2$ against $6.4$ at batch $16$), every seed between $75.5$ and $84.3$
+--- but the unmasked one bifurcates: three seeds finish at $82.5$--$84.8$, slightly
+\emph{above} their isolated counterparts ($+0.3$, $+1.8$, $+8.1$), one at $58.2$ and two at
+chance ($9.9$). Leaking replay onto the live coalition is therefore not a pure loss --- the
+surviving seeds show that the extra plasticity can help --- but it opens a failure mode that
+the mask closes: with the current input's hidden computation held invariant, the noisiest
+replay degrades the system gracefully instead of destroying it. The paired mean at batch $2$
+($+24$ $[-0.2,+48.5]$) describes that failure mode, not a margin, and is kept out of the
+ranges quoted in the main text.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=.95\linewidth]{fig_isomargin.pdf}
+\caption{\textbf{Isolation across replay batch sizes} (held-out split). \textbf{Left:}
+split-MNIST accuracy against replay batch size for isolated replay (the full system) and for
+rotation with unmasked replay, every seed shown; at batch $2$ no unmasked mean is drawn
+because three of six seeds fail (values at the axis floor). \textbf{Right:} the seed-paired
+margin of isolation with a 95\% bootstrap interval at the batch sizes where the unmasked
+run does not collapse.}
+\label{fig:isomargin}
+\end{figure}
 
 \section{Development-phase numbers and a second held-out split}
 \label{app:val}
