@@ -531,6 +531,38 @@ Fig. 2 标题 "0.6–0.7"→"0.6"、双括号、preprint 控制器 "at most 1.4"
 "provably cannot serve" 软化等。Workshop 主文守住 8 页，Fig. 1 scale 0.85、Fig. 3 宽 .74（图字号优先于文字，
 用 Section 5/Discussion 的压缩换回）。
 
+### 协议切换：全部主文数字改为 held-out 划分（2026-09-05 夜 – 09-06 晨，~400 运行）
+
+**动机**：审稿人对"官方测试集选参"的保留意见靠附录澄清始终扎眼；干净的解法是换协议——官方测试集
+定位为 development set，论文报告的每个数字都在训练集的 10% held-out 划分（种子 1234，从不训练、从不
+参与任何决定）上测得。**重跑**：主文引用的 104 个配置 × 3 种子（headline 行已有 6 种子）= 312 run，
+8 个单线程 worker（OMP=1）约 9.5 小时；补种子 24 run（readout-only、night-on-top、gain 10、batch 4、
+trickle/burst/pressure 各到 6 种子）；**第二个独立划分**（`--val-seed 4321`，pickle 前缀 `val4321_`，
+20 个 headline 配置 × 3 种子）回应"单一划分"；尖峰能耗用 `scripts/val_spike.py` 在 held-out 上重测。
+未重跑：附录 E–H 的 5% 旧网格、η 扫描、K=200、下选择、梯度形式控制器、c100 深度——统一标注
+development-phase（官方测试集）并只作为机制排序证据。
+
+**held-out 关键数字（vs 开发阶段）**：默认 91.6±0.3 / 94.1±0.2（92.7/94.7）；夜间窄底座 89.2±1.7、
+同底座 89.0±3.5（第二划分 91.5±0.5！夜间的双峰性是划分依赖的，领先幅度从 +2.6 缩到 +0.3）；BP+ER
+88.8±0.3；unmasked SGD 85.4±3.5（第二划分 80.0±14.1）；silent 88.0±0.7；**仅轮换 91.5±0.3 / 93.7**
+→ isolation 的边际精度 +0.1 [−0.3, +0.5]（batch 16）、+0.2（8）、+0.9（4）、静态 +0.4；单独 +2.6；
+readout-only 41.7±10.9；随机轮换 91.0±0.8 / 92.1；**masked Adam 与 SGD 打平**（91.5/94.1 vs 91.6/94.1，
+leak 91.6）——开发阶段的 0.9 优势没有复现，措辞改为"least optimiser state suffices"；momentum 0
+88.4/89.4；mirror 78.0±3.2；soft 89.9/84.3。**batch 4 不再双峰**（89.7±0.7 vs 开发 63.4±46.4），仅轮换
+88.8；**clocked burst 失效**（80.5±6.1 ≈ trickle 78.5），只有压力触发有效（88.6±1.6）；增益 10 在两种系统
+上都不稳定。控制器：CIFAR 三个体制静态 +1.2 至 +5.3，MNIST 静态第一划分 93.5±4.3（一个种子崩溃）、
+第二划分 95.2±0.4 → 不主张 MNIST 静态收益；深度：d5+skips 91.0/95.8 vs 两层默认 91.6/94.1。CIFAR
+排序两个划分全部复现，特征前端 BP+ER 领先缩到 0.5。能耗：默认 92.7% @ 117 nJ（21× 低于 dense），
+rotation-free 对照在 T_s=32 只降 0.4——"校准交互反号"主张撤回。87 个序列配置 test-vs-held-out
+Spearman 0.973、均差 −1.1。
+
+**文稿**：两版 Section 4/5、摘要、Intro、Discussion、附录 C/D/I/J 全部数字重写；协议段一句中性表述
+（official test sets served as the development set; every reported number is on a held-out tenth …）；
+附录 K/H 改为"development-phase vs reported vs second split"对照表 + held-out 逐任务矩阵（F 6.4±0.6）；
+图 2/3/5/6 用 `MLPC_VAL=1` 重生成（frontier 去掉 5% 灰点，Pareto 改为 held-out 的默认 vs rotation-free）。
+Workshop 主文守住 8 页。**教训**：占位符互为前缀会串填（VCIFREFR/VCIFREFRSTA）；Windows 写的清单文件
+带 \r 会让 shell 监视器计数为零；8 核笔记本上 OMP=1 × 8 worker 最有效。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，

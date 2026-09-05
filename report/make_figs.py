@@ -10,6 +10,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 PARTS = os.path.join(os.path.dirname(HERE), "results", "bio", "seq", "parts")
 FIGS = os.path.join(HERE, "figs")
+PREFIX = "val_" if os.environ.get("MLPC_VAL") else ""  # held-out protocol pickles
 os.makedirs(FIGS, exist_ok=True)
 
 plt.rcParams.update({"font.size": 8.5, "axes.spines.top": False, "axes.spines.right": False,
@@ -22,7 +23,7 @@ C = {"refr": "#0072B2", "none": "#E69F00", "night": "#009E73", "press": "#CC79A7
 def stat(cfg):
     accs, reps = [], []
     for s in range(6):
-        p = os.path.join(PARTS, f"{cfg}_s{s}.pkl")
+        p = os.path.join(PARTS, f"{PREFIX}{cfg}_s{s}.pkl")
         if os.path.exists(p):
             r = pickle.load(open(p, "rb"))
             accs.append(r["final_acc"]); reps.append(r.get("replay_used", np.nan))
@@ -80,6 +81,7 @@ ax.legend(fontsize=6.3, loc="lower right")
 fig.savefig(os.path.join(FIGS, "fig_batch.pdf")); plt.close(fig)
 
 # ---------------- Fig: rotation price/gain and the novelty gate ----------------
+_PREFIX_MAIN, PREFIX = PREFIX, ""  # legacy 5% figures: development-phase pickles
 fig, axes = plt.subplots(1, 3, figsize=(7.0, 2.3))
 ax = axes[0]
 names = ["no rotation", "refractory", "pressure\n($\\theta_r{=}4$)", "novelty gate\n($\\beta{=}1.5$)"]
@@ -130,13 +132,16 @@ fig.savefig(os.path.join(FIGS, "fig_k200.pdf")); plt.close(fig)
 print("figures written to", FIGS)
 
 
+PREFIX = _PREFIX_MAIN
 # ---------------- Fig: the operating frontier (phases 12-15, stateless optimiser) ----------------
 def stat6(cfg):
     accs = []
     for s in range(6):
-        p = os.path.join(PARTS, f"{cfg}_s{s}.pkl")
+        p = os.path.join(PARTS, f"{PREFIX}{cfg}_s{s}.pkl")
         if os.path.exists(p):
             accs.append(pickle.load(open(p, "rb"))["final_acc"])
+    if not accs:
+        raise KeyError(cfg)
     return 100 * np.mean(accs), 100 * (np.std(accs, ddof=1) if len(accs) > 1 else 0.0)
 
 
@@ -162,12 +167,19 @@ HIST5 = [  # the historical 5% family (faded)
 ]
 fig, ax = plt.subplots(figsize=(3.8, 2.9))
 for cs, ct in HIST5:
-    (xm, _), (ym, _) = stat6(cs), stat6(ct)
+    try:
+        (xm, _), (ym, _) = stat6(cs), stat6(ct)
+    except KeyError:
+        continue
     ax.plot(xm, ym, marker="o", ms=3, color=C["grey"], alpha=0.45, lw=0)
-ax.annotate("historical $5\%$ family", (89.2, 93.6), fontsize=6.5, color=C["grey"], alpha=0.8)
+if not PREFIX:
+    ax.annotate("historical $5\%$ family", (89.2, 93.6), fontsize=6.5, color=C["grey"], alpha=0.8)
 front = []
 for name, cs, ct, onf, off in FRONTIER:
-    (xm, xs), (ym, ys) = stat6(cs), stat6(ct)
+    try:
+        (xm, xs), (ym, ys) = stat6(cs), stat6(ct)
+    except KeyError:
+        continue
     ax.errorbar(xm, ym, xerr=xs, yerr=ys, marker="o", ms=4,
                 color=C["refr"] if onf else C["press"], lw=0, elinewidth=0.8, capsize=1.5)
     ax.annotate(name, (xm, ym), textcoords="offset points", xytext=off, fontsize=7,

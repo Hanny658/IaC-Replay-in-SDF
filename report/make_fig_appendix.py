@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 HERE = os.path.dirname(os.path.abspath(__file__))
 PARTS = os.path.join(os.path.dirname(HERE), "results", "bio", "seq", "parts")
 FIGS = os.path.join(HERE, "figs")
+PREFIX = "val_" if os.environ.get("MLPC_VAL") else ""  # held-out protocol pickles
 plt.rcParams.update({"font.size": 8.5, "axes.titlesize": 9, "axes.labelsize": 8.5, "legend.fontsize": 7.5,
                      "axes.spines.top": False, "axes.spines.right": False})
 
@@ -16,7 +17,7 @@ plt.rcParams.update({"font.size": 8.5, "axes.titlesize": 9, "axes.labelsize": 8.
 def stat(cfg, n=6):
     a = []
     for s in range(n):
-        p = os.path.join(PARTS, f"{cfg}_s{s}.pkl")
+        p = os.path.join(PARTS, f"{PREFIX}{cfg}_s{s}.pkl")
         if os.path.exists(p):
             a.append(100 * pickle.load(open(p, "rb"))["final_acc"])
     return np.mean(a), (np.std(a, ddof=1) if len(a) > 1 else 0.0), len(a)
@@ -45,9 +46,8 @@ fig.tight_layout(); fig.savefig(os.path.join(FIGS, "fig_waterfall.pdf")); plt.cl
 
 # ---- (b) energy-accuracy Pareto (numbers from the spiking re-measure, train-calibrated thresholds)
 series = {
-    "always-on rotation, $10\\%$ (default)": ("#1f6fb3", [(58.7, 75.5, 4), (119.1, 93.75, 8), (241.1, 94.42, 16), (485.8, 94.61, 32)], (2461, 94.74), (526, 94.74)),
-    "always-on rotation, $5\\%$": ("#6baed6", [(58.3, 63.5, 4), (117.9, 92.72, 8), (238.1, 93.11, 16), (479.6, 92.77, 32)], (2461, 93.53), (516, 93.53)),
-    "rotation-free (silent mask), $5\\%$": ("#b3477a", [(58.6, 67.6, 4), (119.9, 94.58, 8), (244.0, 92.51, 16), (492.9, 90.06, 32)], (2461, 96.04), (516, 96.04)),
+    "always-on rotation, $10\\%$ (default)": ("#1f6fb3", [(57.5, 68.64, 4), (116.6, 92.73, 8), (236.0, 93.95, 16), (475.8, 94.02, 32)], (2461, 94.17), (526, 94.17)),
+    "rotation-free (silent mask), $10\\%$": ("#b3477a", [(58.0, 56.94, 4), (119.6, 94.18, 8), (245.3, 94.30, 16), (498.0, 93.93, 32)], (2461, 95.22), (526, 95.22)),
 }
 fig, ax = plt.subplots(figsize=(3.6, 2.4))
 for lab, (col, pts, dense, evr) in series.items():
@@ -61,7 +61,7 @@ for lab, (col, pts, dense, evr) in series.items():
 ax.plot([], [], marker="s", ms=4, color="black", lw=0, label="dense rate inference")
 ax.plot([], [], marker="D", ms=3.5, color="black", lw=0, label="event-driven rate inference")
 ax.set_xscale("log"); ax.set_xlabel("energy proxy per sample (nJ, 45-nm FP32 arithmetic)"); ax.set_ylabel("i.i.d. MNIST accuracy (%)")
-ax.set_ylim(60, 97.5); ax.legend(loc="lower right", frameon=False)
+ax.set_ylim(55, 97.5); ax.legend(loc="lower right", frameon=False)
 ax.set_title("spiking inference: accuracy against energy proxy")
 fig.tight_layout(); fig.savefig(os.path.join(FIGS, "fig_pareto.pdf")); plt.close(fig)
 print("appendix figures written")

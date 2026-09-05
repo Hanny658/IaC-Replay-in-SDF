@@ -1055,6 +1055,7 @@ def split_tasks(cfg):
 
 
 VAL = False  # --val: evaluate on a held-out tenth of the training set instead of the test set
+VAL_SEED = 1234  # --val-seed: which stratified split (1234 = the split used throughout; others = replication splits)
 
 
 def _val_split(X, y, frac=0.1, seed=1234):
@@ -1074,7 +1075,7 @@ def _val_split(X, y, frac=0.1, seed=1234):
 def load_data(cfg):
     X, y, Xe, ye, shape = _load_data_raw(cfg)
     if VAL:
-        X, y, Xe, ye = _val_split(X, y)
+        X, y, Xe, ye = _val_split(X, y, seed=VAL_SEED)
     return X, y, Xe, ye, shape
 
 
@@ -1916,7 +1917,8 @@ def task_overlap(net, Xte, yte, tasks, thresh=0.05, layers=None):
 
 
 def part_path(config, seed):
-    return os.path.join(PARTS, f"{'val_' if VAL else ''}{config}_s{seed}.pkl")
+    prefix = ('val_' if VAL_SEED == 1234 else f'val{VAL_SEED}_') if VAL else ''
+    return os.path.join(PARTS, f"{prefix}{config}_s{seed}.pkl")
 
 
 def summary():
@@ -1949,9 +1951,12 @@ def main():
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--summary", action="store_true")
     ap.add_argument("--val", action="store_true", help="evaluate on a held-out 10%% of train (val_ checkpoints)")
+    ap.add_argument("--val-seed", type=int, default=1234, help="seed of the stratified held-out split (val<seed>_ checkpoints if not 1234)")
     args = ap.parse_args()
     global VAL
+    global VAL_SEED
     VAL = args.val
+    VAL_SEED = args.val_seed
     if args.summary:
         summary()
         return
@@ -1962,7 +1967,8 @@ def main():
     # (the thread count is recorded but not compared: runs reproduce bitwise only at the same
     # OMP_NUM_THREADS, since reduction order feeds k-WTA's discontinuity)
     run_args = dict(epochs_per_task=args.epochs_per_task, batch=args.batch,
-                    nrem_batches=args.nrem_batches, nrem_gain=args.nrem_gain, val=VAL)
+                    nrem_batches=args.nrem_batches, nrem_gain=args.nrem_gain, val=VAL,
+                    **({"val_seed": VAL_SEED} if VAL and VAL_SEED != 1234 else {}))
     omp_threads = os.environ.get("OMP_NUM_THREADS")
     for seed in args.seeds:
         for config in configs:

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 HERE = os.path.dirname(os.path.abspath(__file__))
 PARTS = os.path.join(os.path.dirname(HERE), "results", "bio", "seq", "parts")
 FIGS = os.path.join(HERE, "figs")
+PREFIX = "val_" if os.environ.get("MLPC_VAL") else ""  # held-out protocol pickles
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 9.5, "axes.labelsize": 9, "legend.fontsize": 7.5,
                      "axes.spines.top": False, "axes.spines.right": False})
 C = {"fix": "#b3477a", "kad": "#1f6fb3", "skip": "#2a9d5c", "bp": "#777777"}
@@ -18,7 +19,7 @@ C = {"fix": "#b3477a", "kad": "#1f6fb3", "skip": "#2a9d5c", "bp": "#777777"}
 def load(cfg, n=6):
     out = []
     for s in range(n):
-        p = os.path.join(PARTS, f"{cfg}_s{s}.pkl")
+        p = os.path.join(PARTS, f"{PREFIX}{cfg}_s{s}.pkl")
         if os.path.exists(p):
             out.append(pickle.load(open(p, "rb")))
     return out
