@@ -827,6 +827,49 @@ CONFIGS = {
                                          diag_drift=True, mask_post_wake=True, hidden=(512, 256),
                                          active_frac=0.10, opt="sgd", eta=0.02, readout=name)
        for name in ("free", "isolated")},
+    # ---- 26 (manuscript review): the decisive controls the reviewer asked for, on the record
+    # substrate.  rot_noiso = the missing cell of the rotation x isolation square; readout_only =
+    # how much of the gain is hidden consolidation at all; random_rot = matched-size random rest.
+    **{f"g26_ctrl_{name}{sfx}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                     batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                     active_frac=0.10, opt="sgd", eta=0.02, **kw,
+                                     **({"static": True} if sfx else {}))
+       for name, kw in {"rot_noiso": dict(mask="refractory", no_iso=True),
+                        "readout_only": dict(mask="refractory", replay_readout_only=True),
+                        "random_rot": dict(mask="refr_random")}.items()
+       for sfx in ("", "_static")},
+    # replay gain swept independently of the waking step (default 3): does the unmasked control
+    # merely suffer from a replay step 48x its waking step?
+    **{f"g26_gain_{name}_g{gtag}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                        batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                        active_frac=0.10, opt="sgd", eta=0.02, mask=m, nrem_gain=gain)
+       for name, m in (("refr", "refractory"), ("none", "none"))
+       for gtag, gain in (("0625", 0.0625), ("025", 0.25), ("1", 1.0))},
+    # rotation alone at the small replay batches of Fig. 2: is isolation what makes micro-batch
+    # replay affordable once the rotation is on?
+    **{f"g26_ctrl_rot_noiso_br{b}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                         batch_wake=16, cadence=1, batch_replay=b, hidden=(512, 256),
+                                         active_frac=0.10, opt="sgd", eta=0.02, mask="refractory", no_iso=True)
+       for b in (8, 4)},
+    **{f"g26_gain_{name}_g10": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                    batch_wake=16, cadence=1, batch_replay=16, hidden=(512, 256),
+                                    active_frac=0.10, opt="sgd", eta=0.02, mask=m, nrem_gain=10.0)
+       for name, m in (("refr", "refractory"), ("none", "none"))},
+    # exactness diagnostic on raw CIFAR (as g21_diag_free)
+    "g26_diag_cifar": dict(model="ctx", dataset="cifar", buffer=1000, policy="random", hidden=(512, 256),
+                           active_frac=0.10, schedule="local", batch_wake=16, cadence=1, batch_replay=16,
+                           mask="refractory", opt="sgd", eta=0.01, diag_drift=True, readout="free"),
+    # single-pass streams: one epoch per task, everything else as the headline cells
+    "g26_stream_refr": dict(model="ctx", schedule="local", buffer=1000, policy="random", batch_wake=16,
+                            cadence=1, batch_replay=16, mask="refractory", opt="sgd", eta=0.02,
+                            hidden=(512, 256), active_frac=0.10, epochs=1),
+    "g26_stream_none": dict(model="ctx", schedule="local", buffer=1000, policy="random", batch_wake=16,
+                            cadence=1, batch_replay=16, mask="none", opt="sgd", eta=0.02,
+                            hidden=(512, 256), active_frac=0.10, epochs=1),
+    "g26_stream_night": dict(model="ctx", buffer=1000, policy="random", replay="nrem", hidden=(512, 256),
+                             active_frac=0.10, epochs=1),
+    "g26_stream_bp_er": dict(model="bp", buffer=1000, policy="random", replay="er", epochs=1),
+    "g26_stream_ctx_none": dict(model="ctx", hidden=(512, 256), active_frac=0.10, epochs=1),
     # 20C wave 2: the thin-signal axis wants capacity and replay volume, not depth --
     # width (more representational room at the same chain length), K=5000 (50/class instead
     # of 10), and their combination, all d2 + controller on the feature front.
@@ -1558,6 +1601,17 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                 sup_wake = net.suppress  # the suppression this batch was inferred under (H4 diag)
                 if mask_policy == "refractory":  # what fired now sits out the next competition
                     net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
+                elif mask_policy == "refr_random":
+                    # 26 (review control): a RANDOM subset of the same size as the fired set sits out
+                    # the next competition -- is the benefit "recently used units rest" or any
+                    # matched-size perturbation of the sub-network?
+                    sup = [None]
+                    for l in range(1, net.L):
+                        k_r = int((a[l] > 0).float().mean(0).gt(0).sum())
+                        s_l = torch.zeros(net.sizes[l])
+                        s_l[torch.randperm(net.sizes[l], generator=g)[:k_r]] = 1.0
+                        sup.append(s_l)
+                    net.suppress = sup
                 elif mask_policy == "refr_soft":  # 12-E3: adaptation, not silencing -- rate halved
                     net.suppress = [None] + [0.5 * (a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
                 elif mask_policy == "refr_prog":
@@ -1689,7 +1743,9 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                     S[l] = S[l] + fired                             # Process S: rises with use
                     use[l] = 0.9 * use[l] + 0.1 * fired            # recent use, ~10 batches
                     long_use[l] = 0.995 * long_use[l] + 0.005 * fired  # long-term use, ~200 batches
-                    if mask_policy in ("silent", "refractory", "refr_soft", "refr_press", "refr_frac", "refr_ach", "refr_nov", "refr_prog", "refr_block", "refr_util"):
+                    if cfg.get("no_iso"):  # 26 (review control): rotation on, isolation off
+                        awake.append(torch.zeros_like(fired))
+                    elif mask_policy in ("silent", "refractory", "refr_random", "refr_soft", "refr_press", "refr_frac", "refr_ach", "refr_nov", "refr_prog", "refr_block", "refr_util"):
                         awake.append((fired > 0).float())
                     elif mask_policy == "idle":
                         awake.append((use[l] >= use[l].median()).float())   # asleep = idle half
@@ -1725,6 +1781,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                         for l in range(1, net.L + 1):
                             if l == net.L and readout == "free":
                                 syn.append(torch.ones(NC, hidden[-1])); bias.append(torch.ones(NC))
+                            elif cfg.get("replay_readout_only"):  # 26 (review control)
+                                syn.append(torch.zeros(net.sizes[l], net.sizes[l - 1])); bias.append(torch.zeros(net.sizes[l]))
                             else:
                                 allowed = 1.0 - post_awake[l][:, None] * pre_awake[l - 1][None, :]
                                 syn.append(allowed); bias.append(1.0 - post_awake[l])
@@ -1916,14 +1974,15 @@ def main():
                 else:
                     print(f"  skip {config} seed {seed}", flush=True)
                     continue
+            ep = CONFIGS[config].get("epochs", args.epochs_per_task)  # 26: single-pass streams
             if CONFIGS[config].get("schedule") == "internal":
-                out = run_stream(config, seed, args.epochs_per_task, args.batch, args.nrem_gain)
+                out = run_stream(config, seed, ep, args.batch, args.nrem_gain)
             elif CONFIGS[config].get("schedule") == "local":
                 c = CONFIGS[config]
-                out = run_local(config, seed, args.epochs_per_task, c.get("batch_wake", 64), args.batch, args.nrem_gain,
+                out = run_local(config, seed, ep, c.get("batch_wake", 64), args.batch, args.nrem_gain,
                                 cadence=c.get("cadence", 9))
             else:
-                out = run(config, seed, args.epochs_per_task, args.batch, args.nrem_batches, args.nrem_gain)
+                out = run(config, seed, ep, args.batch, args.nrem_batches, args.nrem_gain)
             out["run_args"] = run_args
             out["omp_threads"] = omp_threads
             tmp = part_path(config, seed) + ".tmp"

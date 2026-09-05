@@ -476,6 +476,36 @@ the three channels and the skip path"：Algorithm 1（带状态快照的伪码�
 代价是六轮压缩（Fig. 1 scale 0.83、Fig. 2 宽 .44、Fig. 3 宽 .88、若干句子精简）。附带修正：momentum
 附录"3× the waking rate"→"3η 对比按批缩放的清醒步 η·m/256"。
 
+### 第二轮手稿评审（Weak Reject → 处理，2026-09-05，~108 运行）
+
+**评审六项与处理**：(1) 测试集选参：不切协议（重跑 300 run 不现实），改为把 held-out 六种子数字
+提到 Results 第一段与官方测试集并排，写明"配置在复验前冻结；held-out 样本开发阶段只是训练数据、从未参与
+选择、复验时不训练"，其余数字统一标注 development-phase/official test；**CIFAR held-out 复验**
+（raw 7 配置 + 特征 7 配置 × 3 种子，`--val`）：排序全部复现——raw 28.9 > 25.7 > 24.8 > 15.4 ≈ 16.3
+（refr > night > BP+ER > unmasked ≈ none），特征 42.3 > 34.0 ≫ 20.5，BP+ER 42.8（领先缩到 0.5），分解链
+43.7/43.5/40.4。(2) "Inference as consolidation" 过强：主张限定为"监督稀疏 CL 系统中受限步间重放移除
+独立离线阶段"，"while the agent acts" → "between the steps of the stream"；补更新次数 39× 与墙钟
+（6.6 min vs night 0.6 / 无重放 0.4 / unmasked 6.0）；补**单遍流**（1 epoch/task，`g26_stream_*`，旋钮
+`epochs`）：refr 91.8±0.4 vs BP+ER 90.1、night 75.4（每任务只一夜）、unmasked 68.3±19.1、无缓冲 18.8。
+(3) exact 范围：Prop. 2 陈述统一 τ_k=0；诊断加种子（隐层码 0.29–0.36%，均 0.32%；预测 0.33%；
+max|Δlogit| 0.02）+ CIFAR（隐层 0.46%，预测 3.6%——低边际预测经可塑读出易翻）。(4) 预算与 48× 学习率比：
+"matched 1.2×" → "within 1.2× (22% more samples, 39× more updates)"；**重放增益扫描** {1/16,1/4,1,3,10}：
+masked 71.9/88.2/91.8/92.7/90.8，unmasked 63.8/83.3/86.2/87.0/85.5——两者都在默认 3 处峰值，unmasked
+任何增益下追不上 → 混杂解释不成立。(5) 因果识别：**四格表补齐**（`g26_ctrl_rot_noiso`，旋钮 `no_iso`）：
+两者都无 87.0 / 仅隔离 88.8 / **仅轮换 92.1±0.5** / 都有 92.7；轮换是更大的单因子（+5.1 单独、+3.9 叠加），
+隔离在轮换开启时的边际精度 +0.6（batch 16 与 8 都是 0.6；batch 4 时 masked 反而双峰 63.4±46.4，仅轮换
+89.5）；静态无差别（94.7）。→ 主文改写："隔离买的是保证，轮换买的是精度"。**readout-only 重放**
+（`replay_readout_only`）= 随机水平 27.3±15.1、静态还亏 12 点 → 效应全部来自隐层巩固。**随机轮换**
+（`mask="refr_random"`，匹配数量）90.8±1.3、静态 92.8、F 9.4：恢复大部分收益，使用依赖再多 1.9/1.9。
+Table 1 "−rotation" 行是我们标签错误（该行用的就是完整式 (3) 掩码）→ 改标签；mirror 表述软化；BP+ER
+定位为外部参照、明写未含 DER++。(6) 表述与证据：五层"回到两层纪录" → "两层水平（vs 两层控制器格
+91.7/96.1，序列轴低于两层默认 1.2）"；"every fixed decay collapses" 加"无 skips"；触发器标为稀疏预算调度器；
+"未按深度重调固定衰减"明写。写作：评估时抑制关闭（代码 `suppress=None` 后 predict）、F 定义、附录 K 加
+逐任务矩阵（六种子均值，F 5.3±0.4）与 CIFAR held-out 表；Fig. 2 左加"仅轮换"虚线系列；Section 5 压缩、
+Table 2 进附录；hyperref 彩色无边框；Fig. 3/附录图字号上调。Workshop 主文守住 8 页（七轮压缩：Fig. 1
+scale 0.72、Fig. 2 宽 .43、Fig. 3 宽 .72）。**教训**：5 worker × OMP=4 在 8 核笔记本上每进程只拿到 0.8 核
+（第一次启动 32 min 零完成）；改为 OMP=1 × 9 worker 后每进程 1 核、MNIST 本地 run ≈ 14 min。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，

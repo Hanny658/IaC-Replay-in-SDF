@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 HERE = os.path.dirname(os.path.abspath(__file__))
 PARTS = os.path.join(os.path.dirname(HERE), "results", "bio", "seq", "parts")
 FIGS = os.path.join(HERE, "figs")
-plt.rcParams.update({"font.size": 7.5, "axes.titlesize": 8, "axes.labelsize": 7.5, "legend.fontsize": 6.5,
+plt.rcParams.update({"font.size": 9, "axes.titlesize": 9.5, "axes.labelsize": 9, "legend.fontsize": 7.5,
                      "axes.spines.top": False, "axes.spines.right": False})
 C = {"fix": "#b3477a", "kad": "#1f6fb3", "skip": "#2a9d5c", "bp": "#777777"}
 
