@@ -1,1194 +1,966 @@
-我把这个 15 页版本完整看了一遍，也对照了 **CL4FMAgents 2026 的最新 CFP**，并重新核查了几篇关键/最新 reference。先给结论：
+我读了 [cl4fmagents(3).pdf](sandbox:/workspace/scratch/60209d29f51f/upload/cl4fmagents%283%29.pdf) 第 3–4 页的 Method、附录 A 的证明，以及第 5 节的衰减控制器与深度扩展。下面我把自己放在一个**有神经网络和 continual learning 背景、但第一次接触这篇手稿的审稿人**的位置，按你的叙述顺序往下理解。
 
-> **这个版本已经明显从“有趣但理论口径没收住的 preprint”，变成了一篇相当适合 CL4FMAgents 的 workshop paper。**
->
-> 叙事、ablation、理论边界意识都比上一版成熟很多。**我会建议投。**
->
-> 但提交前我认为还有 **2 个 P0 级问题必须修**：一个是我发现的 **replay cost/headline 数值不一致**，另一个是 **Proposition 1 与 plastic readout 之间仍然存在直接逻辑冲突**。前者尤其危险，因为 reviewer 一旦自己算出来，会直接伤害对整篇实验可信度的判断。
+我的初步判断是：**核心数学思路可以理解，两个命题的证明主线也成立；阅读障碍主要来自几种“静默”的混用、没有完全写出的执行时序，以及数学保证与设计选择之间的界限。**我会明确指出哪些地方是公式本身告诉我的，哪些地方需要我替作者补充假设。
 
-按现在的状态，我会大致这样打：
+**首先读 Setting，我会把研究问题理解为：网络能否一边处理当前输入，一边通过 replay 维持旧知识，同时尽量不扰动当前正在使用的表示。**
 
-| 维度                           |                          评价 |
-| ---------------------------- | --------------------------: |
-| Workshop fit                 |                  **8.5/10** |
-| 核心 novelty                   |                    **8/10** |
-| Narrative                    |                    **8/10** |
-| Mathematical rigor           |      **6.5/10 → 修完可到 8/10** |
-| Experimental design          |                    **8/10** |
-| Reproducibility / statistics |                    **7/10** |
-| References                   |                  **8.5/10** |
-| 当前总体                         | **Weak Accept / Accept 边缘** |
-| 修完下面 P0/P1                   |          **比较有竞争力的 Accept** |
+这里有两组不同的问题：
 
-而且 venue 本身其实比我原先想象的还合适。官方 CFP 明确把 **memory/knowledge consolidation、online/test-time/streaming adaptation、catastrophic forgetting、theory and foundations** 都列为 scope，并且 regular paper 正好允许 **8 页正文，不计 references 和 appendix**；你的正文也是 8 页。([NeurIPS 2026 Workshop][1])
+* \(A_{\mathrm{seq}}\)、forgetting 衡量持续学习表现。
+* \(A_{\mathrm{iid}}\)、replay samples \(R\)、energy proxy \(E\) 衡量这种机制付出的代价。
+
+因此，我不会预期接下来看到一个“证明不会遗忘”的定理。我会预期看到的是：
+
+> 作者先证明某些 replay 更新不会改变当前输入的计算，再通过实验说明这种更新方式有助于持续学习。
+
+这个区分很关键。你的数学保证主要是**当前输入上的局部不干扰性**，持续学习表现则需要实验支持。
+
+另外，Setting 中“没有 task identity”明确写的是测试阶段；它与“没有监督标签”是两回事。后面的 \(y\) 说明这仍然是 supervised continual learning。
 
 ---
 
-# 1. 整体叙事：现在已经比较成立了
+**读到 Eq. (1)，我首先把它拆成“计算输入、强制休眠、稀疏竞争”三个操作。**
 
-新标题：
-
-> **Inference as Consolidation: Continual Learning with No Offline Phase by Replay in the Silent Degrees of Freedom**
-
-比上一版好很多。
-
-现在从 Abstract 到 Introduction 的逻辑链条很清楚：
+你的公式是：
 
 $$
-\text{agent cannot conveniently pause}
-\rightarrow
-\text{offline replay / interleaved replay both有代价}
-\rightarrow
-\text{local sleep provides biological motivation}
+z^\ell=W^\ell a^{\ell-1}+b^\ell,
+\qquad
+a^\ell=
+\Phi_k\!\left(
+\sigma(z^\ell)\odot(1-s^\ell)
+\right).
 $$
 
-然后进入核心 inversion：
+按照列向量记法：
 
 $$
-\boxed{
-\text{protect the current computation}
-\;\text{rather than}\;
-\text{protect past parameters}
-}
+a^{\ell-1}\in\mathbb R^{n_{\ell-1}},
+\quad
+W^\ell\in\mathbb R^{n_\ell\times n_{\ell-1}},
+\quad
+z^\ell,b^\ell,a^\ell\in\mathbb R^{n_\ell}.
 $$
 
-再通过 sparse support 得到当前 batch 的 silent degrees of freedom。Abstract 现在也已经主动区分了 **exact for silent-presynaptic/suppressed units** 与 **near-exact elsewhere**，这比上一版“everything exact”的措辞稳健得多。
+我会逐步理解为：
 
-Introduction 对 contribution 的拆分也明显改善：isolation、rotation、trigger、adaptive decay/depth，且明确承认实验是 small-scale mechanism study，而不是 benchmark chasing。
+1. \(z^\ell\) 是这一层每个单元收到的净输入。
+2. \(\sigma\) 将负输入整流为零。
+3. \(s_i^\ell=1\) 的单元被强制置零。
+4. \(\Phi_k\) 在剩余响应中保留最大的 \(k\) 个值。
 
-这一点对 workshop 尤其重要，因为 CL4FMAgents 官方自己说 scope 是从 theory/algorithms 到 large-scale systems，**并不要求一定跑 LLM/FMs**。([NeurIPS 2026 Workshop][1])
+这里一个容易忽略、但非常重要的细节是：**suppression 发生在 k-WTA 竞争之前。**
 
-## 但有一个叙事上的小风险：Section 5 有点像“第二篇 paper”
-
-前四个 section 的故事非常统一：
-
-> silent degrees → isolated replay → refractory rotation → timing/control.
-
-到了 Section 5 突然变成：
-
-> fixed decay is bad → self-referenced decay controller → depth → skip connections.
-
-这个内容本身其实不错，甚至是现在稿子里很有趣的新结果之一：同一个 \(\rho=0.25\) controller 在不同 dataset 上自动形成不同数量级的 decay，并且深层网络明显比固定 \(\lambda\) 稳。
-
-问题只是它目前看起来像一个并列的第四大贡献，而不是前面机制自然延伸出的东西。
-
-我建议把 Section 5 的 framing 从：
-
-> **One constant instead of per-dataset decay tuning, and depth**
-
-稍微改成：
-
-> **Scaling the mechanism: self-referenced decay and depth**
-
-然后明确说：
-
-> isolation/rotation 解决的是 **where and when to consolidate**；
-> adaptive decay 解决的是同一个 design principle 在尺度变化下的 **how strongly to update**。
-
-这样你的统一原则就变成：
+例如：
 
 $$
-\boxed{
-\text{all control signals are referenced to the learner's own current state}
-}
+z=(5,4,3,1),\qquad k=2.
 $$
 
-novelty 是 fast/slow ratio，homeostasis 是 own usage，decay 是 learning-drive/weight ratio。
+不休眠时：
 
-这会让 Section 5 不再像额外塞进来的实验。
+$$
+a=(5,4,0,0).
+$$
+
+如果让第一个单元休眠：
+
+$$
+s=(1,0,0,0),
+$$
+
+那么：
+
+$$
+\sigma(z)\odot(1-s)=(0,4,3,1),
+$$
+
+最终：
+
+$$
+a=(0,4,3,0).
+$$
+
+这意味着原来的第三名会补上来。它并不是先选出赢家，再把某个赢家删除。这正是后文“换一组单元承担当前计算”的基础。
+
+读到这里，我也会建立一个后文反复需要的区分：
+
+| 单元为什么输出为零               | 对权重更新是否天然稳健               |
+| ----------------------- | ------------------------- |
+| \(z_i\leq 0\)，被 ReLU 截断 | 更新可能让它变成正值                |
+| 响应为正，但没有进入 top-\(k\)    | 更新可能让它成为赢家                |
+| \(s_i=1\)，被强制休眠         | 固定 \(s_i\) 时，任意输入变化都仍然乘以零 |
+
+**前两种是“目前没有激活”，第三种是“目前不允许激活”。**你后面的两个命题与推论，实际上就是围绕这个区别展开的。
+
+这里有一个会让我暂停的符号问题：Eq. (1) 写成 \(\ell=1,\ldots,L\)，似乎包括所有层；但 Eq. (2) 的 \(\varepsilon^L=y-z^L\) 又让 \(L\) 看起来是输出层。这样读者就需要猜：输出层是否也经过 suppression 和 k-WTA？
+
+建议明确写出隐藏层与 readout 的边界。例如用 \(H\) 表示隐藏层数，再单独定义：
+
+$$
+r=W^{\mathrm{out}}a^H+b^{\mathrm{out}},
+\qquad
+\varepsilon^{\mathrm{out}}=y-r.
+$$
+
+如果实际实现采用其他约定，也应直接说明。这会同时消除后面“hidden computation”和“readout exception”的歧义。
 
 ---
 
-# 2. Workshop framing 合适，但不要过度“Agent-wash”
+**读到 Eq. (2)，我会把它理解成一种局部误差信号的构造规则，而不是自动视为标准反向传播。**
 
-你开头：
-
-> “An agent that keeps learning in deployment cannot pause to consolidate...”
-
-对于这个 workshop 很自然。
-
-但建议把 **cannot pause** 改成类似：
-
-> “may not be able to afford dedicated consolidation downtime”
-
-因为现实中的 agent 并非逻辑上“不能”暂停。一个挑剔 reviewer 很容易说服务器维护、asynchronous replica、background learner 都可以做 offline consolidation。
-
-另外 Introduction 里：
-
-> “The brain consolidates while it infers, in circuits the current computation is not using.”
-
-我建议也弱一点。
-
-Driessen 2026 确实强力支持的是：在 awake mice 中人为诱导局部 ON/OFF activity 可以降低 local sleep pressure、改变 synaptic markers，并恢复 memory consolidation；而相同总体 firing-rate reduction 的 tonic inhibition 不行。([Nature][2])
-
-但它**没有直接证明**：
-
-> biological consolidation is specifically occurring in circuits unused by the concurrent computation.
-
-因此更安全的句子是：
-
-> “Recent causal evidence shows that some core functions normally associated with sleep can be discharged locally during wakefulness.”
-
-然后下一句再说：
-
-> “We take this as an algorithmic motivation to ask whether unused computational degrees of freedom can similarly host consolidation.”
-
-这样 biology → algorithm 的 inferential leap 就标得非常清楚。
-
----
-
-# 3. 一个我认为必须马上修的实验数字问题：**1.2× replay cost 对不上 headline configuration**
-
-这是这一版里我最担心的地方。
-
-正文 headline configuration 是：
-
-> one isolated replay micro-batch beside **every waking batch**，得到
-> \(92.7\pm0.3\%\)。
-
-Table 1 又明确说 full system 是：
-
-> **one replay micro-batch of 16 per waking batch**。
-
-但是 Appendix C 的 cost accounting 是：
+你的公式是：
 
 $$
-R_{\text{night}}
+\varepsilon^L=y-z^L,
+$$
+
+$$
+\varepsilon^\ell
 =
-480\times256
-\approx1.23\times 10^5
+\sigma'(z^\ell)
+\odot
+(B^\ell)^\top
+\left[
+\kappa\tanh(\varepsilon^{\ell+1}/\kappa)
+\odot
+\mathbf 1(a^{\ell+1}>0)
+\right].
 $$
 
-以及
+为了读清楚，我会先定义一个中间量：
 
 $$
-R_{\text{local}}
+q^{\ell+1}
 =
-18,760\times8
-\approx1.50\times10^5,
+\kappa\tanh(\varepsilon^{\ell+1}/\kappa)
+\odot
+\mathbf 1(a^{\ell+1}>0).
 $$
 
-然后由此得到：
+这样原式变成：
 
 $$
-R_{\text{local}}\approx1.2R_{\text{night}}.
+\varepsilon^\ell
+=
+\sigma'(z^\ell)\odot(B^\ell)^\top q^{\ell+1}.
 $$
 
+现在每部分的作用比较清楚。
 
-
-问题在于，**92.7 的 default 是 batch 16，不是 batch 8**。
-
-因此真正对应 headline configuration 的 replay sample cost 是：
+首先，输出残差：
 
 $$
-18,760\times16=300,160.
+\varepsilon^L=y-z^L
 $$
 
-与 night 比：
+表示目标与当前输出之间的差。如果 \(y\) 是 one-hot target、输出采用平方误差，这对应输出端的负梯度方向。但手稿需要把 target encoding 与误差定义写出来，读者不应自行认定使用的是 cross-entropy 或平方误差。
+
+其次：
 
 $$
-\frac{300,160}{480\times256}
-\approx2.44.
+\kappa\tanh(\varepsilon/\kappa)
 $$
 
-所以：
+在误差较小时近似保留原值：
 
 $$
-\boxed{
-92.7\%\text{ 的配置是约 }2.4\times\text{ night samples，而不是 }1.2\times.
-}
+\kappa\tanh(\varepsilon/\kappa)\approx\varepsilon,
 $$
 
-而 batch 8 的结果，根据 Figure 2 / 正文，是大约：
+在误差较大时限制单个传递分量的幅度：
 
 $$
-91.8\pm0.3\%.
+\left|\kappa\tanh(\varepsilon/\kappa)\right|\leq\kappa.
 $$
 
-正文自己写了 batch size 从 256 降到 8 时：
+随后：
 
 $$
-92.3\rightarrow91.8.
+\mathbf 1(a^{\ell+1}>0)
 $$
 
+表示只有上层实际激活的单元发送这个误差信号。没有参与当前前向表示的上层单元，不发送该分量。
 
+最后，\((B^\ell)^\top\) 把信号传回当前层，\(\sigma'(z^\ell)\) 再根据当前层的整流状态进行门控。
 
-### 这会影响三处 headline
+所以我会把这段理解为：
 
-Abstract 现在说：
+> 激活的上层单元发送幅度受限的误差信号；当前层通过独立学习的反馈连接接收这些信号，并形成自己的局部更新方向。
 
-> 92.7 ± 0.3% ... at 1.2× its replay samples. 
+有两处表述值得更精确。
 
-Results 也说：
-
-> 92.7 ... at 1.2× its replay samples. 
-
-Discussion 又重复：
-
-> above the strongest offline-rehearsal schedule at 1.2× its replay samples. 
-
-**这三个必须统一修。**
-
-最简单有两种写法：
-
-> **92.7 ± 0.3% at 2.4× the night’s replay samples; at matched ≈1.2× replay cost, an 8-sample micro-batch still reaches 91.8 ± 0.3%.**
-
-其实这个结果依然很好。
-
-甚至我觉得故事更科学：
+第一，**受到 \(\kappa\) 限制的是单个发送分量，不一定是聚合后的 \(\varepsilon^\ell_i\)。**对于 ReLU，有：
 
 $$
-\text{accuracy–cost frontier}
+|\varepsilon_i^\ell|
+\leq
+\kappa\sum_j|B^\ell_{ji}|.
 $$
 
-比把一个 record point 强行绑定 1.2× 更有意思。
+因此，若没有额外限制反馈权重，就不能直接说每层最终误差都被 \(\kappa\) 界定。
 
-如果你可以在 deadline 前找到一个 cadence/batch 组合达到接近 92.7 且成本约 1.2×，当然最好；但**不要保留现在这个数字组合**。
+第二，这里使用独立的 \(B^\ell\)，并且没有完整写出 suppression 与 k-WTA 的导数。因此，我会把它视为作者定义的学习规则；它不需要等于标准 backpropagation，但应明确自己的定位。
+
+你接着给出：
+
+$$
+\Delta W^\ell
+\propto
+\varepsilon^\ell(a^{\ell-1})^\top-\lambda W^\ell.
+$$
+
+在单个连接上就是：
+
+$$
+\Delta W^\ell_{ij}
+\propto
+\varepsilon_i^\ell a_j^{\ell-1}-\lambda W^\ell_{ij}.
+$$
+
+“local”的含义由此明确：这个连接的更新使用接收端的误差信号、发送端的活动，以及自身权重。
+
+对于 forward–feedback alignment，我会这样补出其中的直觉：如果形状对应的 \(W^\ell\) 与 \(B^{\ell-1}\) 获得相同的实际增量 \(Q\)，并采用相同衰减，那么在暂不考虑额外约束投影时：
+
+$$
+W^+=W+Q-\lambda W,
+\qquad
+B^+=B+Q-\lambda B,
+$$
+
+于是：
+
+$$
+W^+-B^+=(1-\lambda)(W-B).
+$$
+
+共同的数据增量抵消，二者的差异受到衰减。这解释了 shared decay 为什么与 alignment 有关。不过，实际还有动量、mask 和符号约束，所以“相同实际增量”的实现条件最好交代清楚。
 
 ---
 
-# 4. 数学部分：上一版最大的 Eq. (5) transpose 已经修好了
+**读到 awake set，我会意识到：你保护的对象是整个 waking batch，而不是其中一个样本。**
 
-这是值得肯定的。
-
-现在你明确写：
+定义是：
 
 $$
-B^\ell\in
-\mathbb R^{n_{\ell+1}\times n_\ell},
+\mathcal A^\ell(X)
+=
+\{i:\exists b,\ a^\ell_{i,b}\neq0\}.
 $$
 
-backward signal 用：
+其中的 \(\exists b\) 非常重要。只要单元在 batch 中的任意一个样本上激活，就被视为 awake。
+
+例如两个样本的活动为：
 
 $$
-(B^\ell)^\top\epsilon^{\ell+1},
+a_{\cdot,1}=(1,0,2,0),
+\qquad
+a_{\cdot,2}=(0,3,2,0).
 $$
+
+那么：
+
+$$
+\mathcal A(X)=\{1,2,3\}.
+$$
+
+只有第四个单元对整个 batch 都静默。
+
+由此得到后面证明需要的性质：
+
+$$
+j\notin\mathcal A^{\ell-1}(X)
+\quad\Longrightarrow\quad
+a^{\ell-1}_{j,b}=0
+\quad\forall b.
+$$
+
+这比“某个样本上为零”强得多。
+
+作为读者，我也会因此注意：**单样本 10% 的活动率，不等于整个 batch 有 90% 的单元可以视为 silent。**batch 中不同样本的激活集合取并集后，awake set 可能大很多。因此，batch size 与实际 code overlap 都会影响可隔离的空间。
+
+---
+
+**读到 Eq. (3)，我会把“或”拆成两个性质不同的更新通道。**
+
+你的 mask 是：
+
+$$
+M^\ell_{ij}
+=
+\mathbf1
+\left[
+j\notin\mathcal A^{\ell-1}(X)
+\ \lor\
+i\notin\mathcal A^\ell(X)
+\right].
+$$
+
+其中 \(j\) 是发送端，\(i\) 是接收端。
+
+| 发送端 \(j\) | 接收端 \(i\) | 是否允许 replay 更新 |
+| --------- | --------- | -------------- |
+| awake     | awake     | 不允许            |
+| silent    | awake     | 允许             |
+| awake     | asleep    | 允许             |
+| silent    | asleep    | 允许             |
+
+读到这里，我不会立即接受“所有允许更新都不可见”。我会分开理解：
+
+* **发送端 silent：**连接乘上的输入就是零，改变它不会改变当前净输入。
+* **接收端 asleep：**连接更新可能改变该单元的净输入；只有它更新后仍然不输出，才不会影响当前计算。
+
+这正是 Proposition 1 和 Proposition 2 需要分开的原因。
+
+因此，你的核心 mask 包含：
+
+> 一个无条件成立的 pre-silent 通道，以及一个需要进一步判断的 post-asleep 通道。
+
+后者又因为“自然未激活”与“强制休眠”的区别，被拆成 margin 条件与 Corollary 1。
+
+这个逻辑建议在 Eq. (3) 后直接用一句话预告。否则读者很容易把“目前没有使用”误读成“怎么更新都不会被使用”。
+
+---
+
+**读到 Eq. (4)，我会认为你正在解决一个实现层面的必要问题：保证最终的参数变化真正服从 mask。**
+
+你的更新为：
+
+$$
+v^+
+=
+M\odot(\mu v+G)+(1-M)\odot v,
+$$
+
+$$
+W^+
+=
+W+\eta M\odot v^+-\lambda M\odot W.
+$$
+
+拆成单个连接后更清楚。
+
+当 \(M_{ij}=1\)：
+
+$$
+v^+_{ij}=\mu v_{ij}+G_{ij},
+$$
+
+$$
+W^+_{ij}=(1-\lambda)W_{ij}+\eta v^+_{ij}.
+$$
+
+当 \(M_{ij}=0\)：
+
+$$
+v^+_{ij}=v_{ij},
+\qquad
+W^+_{ij}=W_{ij}.
+$$
+
+因此，被保护连接既不发生 replay 引起的参数变化，也不推进自己的动量状态。
+
+为什么只 mask 当前梯度不够？因为即使：
+
+$$
+G_{ij}=0,
+$$
+
+历史动量仍可能满足：
+
+$$
+\mu v_{ij}\neq0.
+$$
+
+如果后面的权重更新不再 mask，它仍然会移动。weight decay 也同理。
+
+但这里我会提出一个比较实质的审稿意见：
+
+**冻结优化器状态，是比“本次隐藏表示不变”更强的要求。**
+
+假设某个优化器允许内部状态继续更新，但最终参数增量仍严格满足：
+
+$$
+\Delta W=M\odot U,
+$$
+
+那么被保护位置的参数仍然完全不动。只要其余定理条件成立，本次隐藏表示的不变性仍可成立。
+
+所以，需要区分：
+
+* 最终参数变化越出 mask：可能直接破坏你的不变性保证。
+* 内部 moments 在 mask 外更新，但最终参数变化仍被 mask：不自动推翻当前前向不变性，但改变了优化器状态隔离与未来学习行为。
+
+因此，后文“letting the moments leak … surrenders the guarantee”需要明确说明：实现中到底是哪一种泄漏。
+
+另有两个小定义应补上：Eq. (4) 用加号，所以 \(G\) 应是更新方向或负梯度的局部替代；而这里的 \(\lambda\) 是**每步直接使用的衰减系数**，没有再乘 \(\eta\)。这与后面的控制器解释直接相关。
+
+---
+
+**读到 Proposition 1，我会认为这是整篇文章最直接、最坚实的一步。**
+
+条件是：
+
+$$
+\Delta^\ell_{ij}=0
+\quad
+\text{whenever }
+j\in\mathcal A^{\ell-1}(X).
+$$
+
+也就是只允许修改来自 silent presynaptic units 的连接。
+
+对当前 batch 中任意样本 \(b\)，假设前一层活动不变：
+
+$$
+\widehat z^\ell_{i,b}-z^\ell_{i,b}
+=
+\sum_j\Delta^\ell_{ij}a^{\ell-1}_{j,b}.
+$$
+
+每一项只有两种可能：
+
+* 如果 \(j\) awake，按照条件，\(\Delta^\ell_{ij}=0\)。
+* 如果 \(j\) silent，按照定义，\(a^{\ell-1}_{j,b}=0\)。
 
 因此：
 
 $$
-\Delta B^{\ell-1}
-\propto
-\epsilon^\ell(a^{\ell-1})^\top
+\Delta^\ell_{ij}a^{\ell-1}_{j,b}=0
+\quad\forall j,
 $$
 
-维度为：
+从而：
 
 $$
-n_\ell\times n_{\ell-1},
+\widehat z^\ell_{i,b}=z^\ell_{i,b}.
 $$
 
-和 \(B^{\ell-1}\) 一致。
+净输入完全一样，在固定 suppression mask 与竞争规则下，活动当然也完全一样。
 
-所以我上一版提到的 B transpose/dimensionality 问题已经解决了。
-
----
-
-# 5. 但 Proposition 1 仍然有一个非常明确的逻辑矛盾
-
-现在正文先写：
-
-> “The readout row stays plastic ... the guarantees below concern the hidden computation.”
-
-紧接着 Proposition 1 又写：
-
-> “Then every hidden activity on \(x\), **hence the network output, is unchanged** for any magnitude of \(\Delta\).”
-
-
-
-这两句话仍然不能同时成立。
-
-Appendix A 自己其实已经承认：
-
-> “The readout row is excluded from both propositions because it is deliberately kept plastic.” 
-
-而且你的 empirical exactness measurement 更直接：
-
-* hidden code changed：0.36%
-* waking prediction changed：0.27%
-* **readout isolated 后 prediction change 只有 0.001%**
-
-
-
-这几乎已经证明：
+一个数值例子足够说明“任意幅度”的来源：
 
 $$
-\text{plastic readout}
+a=(2,0,3),
+\qquad
+W=(1,4,2).
 $$
 
-正是 output invariance 不成立的主要来源。
-
-### Proposition 1 应该直接改成
+原来的输出为：
 
 $$
-\boxed{
-\text{all hidden activities on }X\text{ are unchanged}
-}
+Wa=1\times2+4\times0+2\times3=8.
 $$
 
-然后补一句：
-
-> If the readout is held fixed, or if its replay update is itself orthogonal/invisible to the current top-layer activity, then the network output is unchanged as well.
-
-这样 theorem 和 implementation 就完全一致。
-
-Abstract / Introduction 里也建议把：
-
-> “the present computation is held invariant”
-
-改成：
-
-> “the hidden computation is held invariant on the exact channel, while the default plastic-readout system is empirically near-invariant end-to-end.”
-
-这并不会削弱 paper。
-
-实际上：
+把第二个权重从 \(4\) 改到 \(104\)：
 
 $$
-0.27\%\rightarrow0.001\%
-$$
-
-这个 measurement 非常有价值，因为你清楚地展示了**理论 guarantee 在哪里停止**。
-
----
-
-# 6. Proposition 2 比上一版好很多，但 batch notation 还不完全严谨
-
-你现在定义：
-
-$$
-A^\ell(x)=
-\{i:a_i^\ell(x)\neq0
-\text{ for some sample in }x\}.
-$$
-
-这意味着这里的 \(x\) 实际已经是一个 batch。
-
-但证明里又像处理单个 sample 一样写：
-
-$$
-a_j^{\ell-1}(x),\quad
-z_i^\ell,\quad
-\delta_i,
-$$
-
-以及一个 scalar 的 \(k\)-th largest threshold。
-
-严格写的话建议改成：
-
-$$
-X=\{x_b\}_{b=1}^{m},
-$$
-
-$$
-A^\ell(X)
+\widehat Wa
 =
-\left\{
-i:
-\exists b,\,
-a^\ell_{i,b}\neq0
-\right\}.
+1\times2+104\times0+2\times3=8.
 $$
 
-Proposition 1 的 pre-silent condition 就是：
+更新再大也没有影响，因为它乘的是零。
+
+随后使用逐层归纳：
 
 $$
-j\notin A^{\ell-1}(X)
-\quad\Longleftrightarrow\quad
-a^{\ell-1}_{j,b}=0,\ \forall b.
+a^0=x\text{ 不变}
+\Longrightarrow
+a^1\text{ 不变}
+\Longrightarrow
+\cdots
+\Longrightarrow
+a^H\text{ 不变}.
 $$
 
-Proposition 2 则定义：
+**这是有限幅度更新下的精确等式，不只是“小梯度近似不影响输出”。**
+
+但我会把它的适用条件记在旁边：比较前后使用同一个 \(X\)、同一个 suppression state；这里没有允许任意 bias 更新；所有相关层的更新都要满足条件。
+
+它也只保护这个 \(X\)。某个单元对其他输入可能激活，相关权重更新当然可以影响那些输入。这正是 replay 仍然可能发挥作用的空间。
+
+---
+
+**读到 Proposition 2，我会发现问题从“乘以零”变成了“会不会跨过竞争边界”。**
+
+现在允许修改 asleep 单元的入连接，即使发送端 awake：
 
 $$
 \delta_{i,b}
 =
-g^\ell
-\sum_j
-\Delta^\ell_{ij}
-a^{\ell-1}_{j,b}
+\sum_j\Delta^\ell_{ij}a^{\ell-1}_{j,b}
 +
-\Delta b_i^\ell
+\Delta b_i^\ell.
 $$
 
-并要求：
+这次通常不能再得到 \(\delta_{i,b}=0\)。
+
+你的要求是：
 
 $$
-\boxed{
 \sigma(z^\ell_{i,b}+\delta_{i,b})
 <
 \tau^\ell_{k,b},
+$$
+
+其中 \(\tau^\ell_{k,b}\) 是更新前进入 k-WTA 的第 \(k\) 大响应。
+
+我会把它翻译成：
+
+> 这个单元的内部净输入允许改变，但改变之后，它仍不能挤进当前赢家集合。
+
+继续用：
+
+$$
+z=(5,4,3,1),\qquad k=2,
+$$
+
+此时：
+
+$$
+a=(5,4,0,0),
 \qquad
-\forall i,\forall b
-}
+\tau_k=4.
 $$
 
-其中 \(\tau^\ell_{k,b}\) 是 sample \(b\) 对应的 k-WTA threshold。
+如果第三个单元从 \(3\) 变为 \(3.5\)：
 
-这样 proposition 才和真正的 batch mask 完全一致。
+$$
+z'=(5,4,3.5,1),
+$$
 
-顺便明确使用 strict inequality 是为了避免 k-th place tie；或者说明 deterministic tie-breaking。
+它仍然不是赢家，因而：
+
+$$
+a'=(5,4,0,0).
+$$
+
+但如果变为 \(4.5\)：
+
+$$
+z'=(5,4,4.5,1),
+$$
+
+那么：
+
+$$
+a'=(5,0,4.5,0).
+$$
+
+第三个单元进入，第二个单元退出，隐藏表示改变。
+
+所以，**post-asleep 更新的安全性取决于它距离 winner boundary 有多远。**
+
+对于有严格正间隔的普通未激活单元，可以定义：
+
+$$
+m_{i,b}
+=
+\tau^\ell_{k,b}-\sigma(z^\ell_{i,b})>0.
+$$
+
+由于 ReLU 是 1-Lipschitz，一个更保守、但直观的充分条件是：
+
+$$
+|\delta_{i,b}|<m_{i,b}.
+$$
+
+这不是说实际算法必须用这个界，而是帮助读者理解：更新幅度不是凭空受限，它受到当前竞争间隔约束。
+
+证明中另一个需要读者自己补出的环节是：**原来的赢家为什么不会自己发生变化？**
+
+因为对 awake 接收端，你只允许 pre-silent 更新；由 Proposition 1，它们的净输入不变。于是：
+
+1. 原来的赢家数值不变。
+2. 所有被更新的普通 loser 都没有越过原来的门槛。
+3. 原来的赢家集合与输出值都保持不变。
+
+这三句话加进去，附录 A 的证明会容易跟很多。
+
+此外，严格小于号是充分条件，并没有覆盖所有安全情况。例如 \(\tau_k=0\) 时，更新后仍然输出零的单元也是安全的，但不满足 \(0<0\)。建议单独说明零阈值情形，或者明确这个 margin 条件只讨论具有正竞争阈值的情况。
 
 ---
 
-# 7. \(g^\ell\) 还是没有定义，而 proof 仍然假定它线性
+**读到 Corollary 1，我终于理解 rotation 为什么能加强理论保证。**
 
-Eq. (1) 写：
-
-$$
-z^\ell=g^\ell(W^\ell a^{\ell-1})+b^\ell,
-$$
-
-但 Appendix 直接写：
+如果：
 
 $$
-\hat z_i^\ell-z_i^\ell
-=
-g^\ell\sum_j
-\Delta^\ell_{ij}a_j^{\ell-1}.
+s_i^\ell=1,
 $$
 
- 
-
-这只有在 \(g^\ell\) 是 scalar / fixed linear gain 时才成立。
-
-建议不要留任何悬念，直接写：
+那么无论更新把净输入推到哪里：
 
 $$
-g^\ell>0
+\sigma(z_i^\ell+\delta_i)(1-s_i^\ell)=0.
 $$
 
-is a fixed scalar layer gain，
+它甚至不会以一个正响应参加竞争。
 
-甚至干脆写成：
+因此：
 
-$$
-z^\ell
-=
-g^\ell W^\ell a^{\ell-1}+b^\ell.
-$$
+* 普通 loser 必须满足“更新后仍然输掉竞争”。
+* 强制休眠单元已经被禁止参加竞争，不需要 margin 条件。
 
-这是一个两分钟能修、但 reviewer 很容易挑出来的 notation hole。
+这一步不是在说“休眠单元的内部状态完全没变”。恰恰相反，它的入权重、bias、净输入都可以变化；只是这些变化在当前 suppression state 下无法显露为活动。
+
+到这里，三类保证可以精确对应起来：
+
+| 更新通道                | 当前隐藏表示不变的原因      |
+| ------------------- | ---------------- |
+| pre-silent          | 权重变化乘上零输入        |
+| post-suppressed     | 净输入变化最终乘上零 gate  |
+| post-inactive、未强制休眠 | 更新后仍未跨过 k-WTA 门槛 |
+
+这张对应表很适合放在两个命题附近，因为它直接解释了为什么有两条 proposition 和一条 corollary。
 
 ---
 
-# 8. Bias、decay 和 momentum 的 exactness 条件还应该正式写出来
+**读到 exactness measurement，我会把理论结论与系统实际运行的结论分开。**
 
-你现在 Proposition 2 已经把 \(\Delta b_i^\ell\) 纳入了，这比上一版好。
+手稿明确说默认系统不强制检查 margin，并报告：
 
-但 Eq. (3) 定义的是 **synapse mask**，正文没有告诉 reviewer：
+* top hidden code 在 \(0.36\%\) 的 waking samples 上发生变化；
+* prediction 在 \(0.27\%\) 上发生变化；
+* readout 也隔离时，prediction 变化为 \(0.001\%\)。
 
-> replay 时 bias 到底怎么 mask？
+我会理解为：
 
-如果 bias 对 awake unit 也更新，那么 pre-silent protection 并不能阻止：
+> 理论刻画了哪些更新严格不可见；完整算法还使用了一个未强制满足充分条件的通道，因此通过实测报告整体偏离程度。
 
-$$
-z_i^\ell\rightarrow z_i^\ell+\Delta b_i^\ell.
-$$
+这些比例也不能互相替代。hidden code 改变不一定导致类别改变；hidden code 不变也不保证类别不变，因为 readout 仍然可塑。
 
-最简单的方案：
-
-> replay-time biases are frozen;
-
-或者：
+假设顶层隐藏表示 \(a^H\) 完全不变，readout 更新仍会带来：
 
 $$
-M_{b,i}^\ell
+\widehat r-r
 =
-1[i\notin A^\ell(X)]
-$$
-
-并把 margin condition 同样应用于 bias。
-
-### Weight decay 也一样
-
-你的 local update 中包含：
-
-$$
--\lambda W^\ell.
-$$
-
-
-
-所以如果“mask”只是 mask replay data gradient，而 decay 仍然作用于 awake–awake synapses：
-
-$$
-W_{ij}
-\leftarrow
-(1-\eta\lambda)W_{ij},
-$$
-
-那么 exactness 立即失效。
-
-正文最好明确一句：
-
-> **The mask applies to the entire replay-induced parameter delta, including momentum and weight decay, not only to the data gradient.**
-
-甚至直接给 heavy-ball replay equation，会非常干净：
-
-$$
-v_t
-=
-M_t\odot
-\left(
-\mu v_{t-1}
+\Delta W^{\mathrm{out}}a^H
 +
-G_t-\lambda W_t
-\right),
+\Delta b^{\mathrm{out}}.
 $$
 
-$$
-W_{t+1}=W_t+\eta v_t.
-$$
+所以，“隐藏计算不变”与“预测不变”是两个层次。
 
-如果实际 implementation 是“mask 外 velocity frozen rather than zero”，就按代码真实实现写。
+同样，我不会把这些命题进一步理解为：
 
-现在稿子只说：
+* 未来输入不受影响；
+* 当前样本以后永远不受影响；
+* 误差信号与未来训练轨迹不变；
+* 不会遗忘旧任务。
 
-> velocity advances only inside the mask. 
-
-对 reviewer 来说还不够精确。
-
-而且我全文没有找到 **heavy-ball momentum coefficient \(\mu\)**。你后来声称 velocity 提供大约 “10× averaging”：
-
-> “the velocity's ∼10× averaging of the 16-sample replay micro-batches...” 
-
-如果你实际用的是：
-
-$$
-\mu=0.9,
-$$
-
-那这个 ~10× timescale 很合理，但一定把 \(\mu\) 写进 Appendix C/protocol。
+尤其你也更新反馈权重 \(B\)：即使本次前向活动不变，后续局部误差信号仍可能变化。
 
 ---
 
-# 9. “Exactly isolated” 现在基本收住了，但主文仍有几句口径太强
+**读到 refractory rotation，我会把它理解为主动制造下一步可安全更新的单元。**
 
-我比较喜欢你现在这一段：
-
-> “The default system does not enforce the margin, so we measured it...”
-> hidden code 0.36%, prediction 0.27%, margin violation \(\sim10^{-4}\). 
-
-这非常像一个成熟 paper 的写法：
+规则是：
 
 $$
-\text{prove what is provable}
-+
-\text{measure the boundary elsewhere}.
+s_i^\ell(t+1)
+=
+\mathbf1[i\in\mathcal A^\ell(X_t)].
 $$
 
-但 Results 里仍写：
+即当前 batch 只要用过某个单元，下一批就让它休息。
 
-> “Inside the mask each update leaves the present computation untouched...”
+在 rotation 始终开启的情况下，由定义可得：
 
+$$
+\mathcal A^\ell(X_t)
+\cap
+\mathcal A^\ell(X_{t+1})
+=
+\varnothing.
+$$
 
+因为上一批的 awake units，下一批被强制输出为零。
 
-这和你自己的 0.36% / 0.27% measurement 不一致。
+于是，当前承担表示的单元在下一步获得了一个受 Corollary 1 保护的写入窗口。这让 rotation 与 replay isolation 之间的联系非常直接。
 
-建议换成：
+但读到这里，我会提出一个必须补充的执行问题：
 
-> “Inside the exact portion of the mask, each update is provably hidden-state neutral; violations in the remaining margin-conditioned channel are rare in measurement.”
+**这个 suppression mask 作用于 waking forward，还是也作用于 replay forward？**
 
-这样完全没有漏洞。
+如果同一个 \(s^\ell(t)\) 也用于 replay，那么强制休眠单元在 replay 的前向活动中同样为零。你的局部规则也许仍允许某些入连接通过误差信号更新，但“这些单元如何在 replay 中被重新激活并承载记忆”就不清楚了。
+
+结合你对 \(\rho^\ell\) 的描述，我最自然的推测是：
+
+> 单元对当前 waking computation 休眠，但在 replay computation 中可以参与活动。
+
+如果这就是实际设计，建议明确写出 waking 与 replay 使用各自的活动变量及 suppression 约定，而不是让读者猜。
+
+按照“replay-activated units 中，有多少对 waking batch asleep”的文字定义，我会将 \(\rho^\ell\) 理解为：
+
+$$
+\rho^\ell
+=
+\frac{
+|\widetilde{\mathcal A}^{\ell}(X_{\mathrm{replay}})
+\setminus
+\mathcal A^\ell(X_{\mathrm{wake}})|
+}{
+|\widetilde{\mathcal A}^{\ell}(X_{\mathrm{replay}})|
+},
+$$
+
+这里假设分母非零，并用波浪号区分 replay 活动。
+
+这样 \(0.53\) 的含义就是“约 53% 的 replay 活跃单元对 waking batch 处于 asleep 状态”，而不是“53% 的权重可更新”，更不是“53% 的更新都自动满足无条件精确保证”。
 
 ---
 
-# 10. Adaptive decay 是很好的新增结果，但公式现在有一个潜在 circularity
+**读到 internal control，我会把“何时 replay”和“何时 rotation”作为两套控制器理解。**
 
-你定义：
+先看 homeostatic pressure：
+
+$$
+S_i\leftarrow S_i+\bar a_i(X_t).
+$$
+
+如果 \(\bar a_i(X_t)\) 表示 batch 平均活动，我会写成：
+
+$$
+\bar a_i(X_t)
+=
+\frac1m\sum_{b=1}^{m}a_{i,b}.
+$$
+
+它累计的是单元被使用的强度。长期活动越强，压力越大。
+
+对于当前 asleep 集合 \(\mathcal D_t\)，触发条件可理解为：
+
+$$
+\frac{1}{|\mathcal D_t|}
+\sum_{i\in\mathcal D_t}S_i
+\geq\theta.
+$$
+
+于是发起 \(n_b\) 个 replay micro-batches。
+
+这里的逻辑是：
+
+> 某些单元此前被频繁使用，现在恰好进入可 consolidation 的休眠窗口；当这些单元的积累压力足够大，就集中进行 replay。
+
+因此，pressure 不是误差，也不是 novelty。它是使用历史的积分量。
+
+不过，“consolidation discharges the pressure”还不足以复现算法。我会想知道它具体是归零、减去常数，还是乘一个衰减系数；也需要定义哪些单元被认为“received consolidation”，以及跨层如何汇总 asleep pressure。
+
+再看 relative novelty。把你的文字展开为：
+
+$$
+\bar e_f(t)
+=
+(1-\alpha_f)\bar e_f(t-1)+\alpha_f e_t,
+$$
+
+$$
+\bar e_s(t)
+=
+(1-\alpha_s)\bar e_s(t-1)+\alpha_s e_t.
+$$
+
+其中 \(\alpha_f=0.1\)、\(\alpha_s=0.002\)，前者较快响应最近变化，后者保存较长历史。
+
+条件：
+
+$$
+\bar e_f\geq\beta\bar e_s
+$$
+
+表示近期误差明显高于长期基准。
+
+另一个条件：
+
+$$
+\bar e_f\geq\gamma e_0
+$$
+
+表示即使没有突增，目前误差仍然相对初始基准较大，任务尚未充分掌握。
+
+两个条件取“或”，分别覆盖“最近变难了”和“一直还没学好”。
+
+这里的尺度不变性可以具体说明：如果所有误差及其基准都统一乘以 \(c>0\)，两个不等式的真假不会改变。但它并不意味着任意更换 loss、非线性变换 error 或跨任务改变误差结构后，门控行为都会保持一致。
+
+最后，我会特别记住你写出的默认配置：**默认 rotation 总是开启；稀疏预算下研究 pressure-triggered bursts，而 headline 配置是每个 waking batch 都 replay。**这说明这些控制器是可选调度机制，不宜让 Figure 1 给人一种所有 headline 结果都同时依赖它们的印象。
+
+---
+
+**把这些部分接起来时，我最需要的是一个与定理严格对应的训练时序。**
+
+附录 Figure 4 展示了 waking forward、wake update、awake sets 与 replay，但还有一个影响定理适用性的细节：
+
+> awake set 是针对 replay 更新之前的哪一份参数计算的？
+
+假设实际执行顺序是：
+
+1. 用 \(W_t\) 做 waking forward，得到 \(\mathcal A(X;W_t)\)。
+2. 做一次 unmasked waking update，得到 \(W_t^{\mathrm{wake}}\)。
+3. 用第一步的 awake set 构造 mask，对新参数做 replay。
+
+那么，某个单元在 \(W_t\) 下静默，不代表它在 \(W_t^{\mathrm{wake}}\) 下仍然静默。Proposition 1 中“它乘上的活动为零”就不能直接套用。
+
+因此，手稿需要明确采用哪一种对应关系，例如：
+
+* 在与 awake set 对应的参数状态上先执行 replay；
+* 或在 waking update 后重新计算用于隔离的活动；
+* 或给出其他足以保持相关 support 的条件。
+
+这不是断定实现存在错误，而是说：**当前文字还没有把定理中的 \(W,a,\mathcal A\) 与程序中的更新时间点完全绑定。**
+
+对于连续多个 replay micro-batches 的 burst，也有类似问题。如果始终复用最开始的 mask，而某一步普通 asleep 单元违反 margin、改变了活动，那么后面几步继续使用旧 support 的理论依据也需要说明。
+
+一个简短的 Algorithm box，标注参数快照、活动缓存、replay suppression 和 mask 重算时机，会比继续增加机制描述更有效。
+
+---
+
+**接着读第 5 节 Eq. (5)，我会把它理解成控制“衰减量相对于学习增量的大小”。**
+
+公式为：
 
 $$
 \lambda_\ell
 =
-\min
-\left(
+\min\left(
 \lambda_{\max},
-\rho
 \frac{
-\operatorname{EMA}|\Delta W^\ell|
+\rho\,\operatorname{EMA}[u^\ell]
 }{
-|W^\ell|
+\overline{|W^\ell|}+\epsilon
 }
 \right).
 $$
 
-然后正文说：
+其中 \(u^\ell\) 是 waking 更新中，经过优化器、尚未加衰减的数据驱动参数增量的平均绝对值。
 
-> \(|\Delta W^\ell|\) is the mean magnitude of the update the optimiser **actually applied**.
-
-
-
-但前面的 update 本身又包含：
+假设实际数据增量为 \(D^\ell_t\)，则我会理解为：
 
 $$
--\lambda W.
-$$
-
-因此文字上看起来是：
-
-$$
-\lambda_t
-\rightarrow
-\Delta W_t
-\rightarrow
-\lambda_t,
-$$
-
-有自指问题。
-
-我猜代码真正做的是使用 **decay-free / pre-decay waking learning drive**。
-
-如果是这样，请正式定义：
-
-$$
-u_t^\ell
+u^\ell_t
 =
-\text{data-driven, post-optimizer, pre-decay waking increment},
+\frac1{N_\ell}
+\sum_{i,j}|D^\ell_{ij,t}|.
 $$
 
-然后：
+按照 Eq. (4) 的约定，在对应的 waking 更新中，这个增量可包含学习率与动量的作用；它不是裸梯度的平均幅度。
+
+为什么要除以平均权重大小？
+
+因为每步 decay 为：
 
 $$
-\lambda_t^\ell
+D^\ell_{\mathrm{decay}}=-\lambda_\ell W^\ell.
+$$
+
+其平均绝对幅度是：
+
+$$
+\overline{|D^\ell_{\mathrm{decay}}|}
 =
-\min
-\left(
-\lambda_{\max},
-\rho
-\frac{
-\operatorname{EMA}(|u_t^\ell|)
-}{
-\operatorname{mean}|W_t^\ell|+\epsilon
-}
-\right).
+\lambda_\ell\overline{|W^\ell|}.
 $$
 
-这样整个 controller 一下就清楚了。
-
-另外最好加入 denominator 的 \(\epsilon\) floor，至少数学定义上避免：
+忽略上限截断与很小的 \(\epsilon\)，代入控制器可得：
 
 $$
-|W|=0.
+\overline{|D^\ell_{\mathrm{decay}}|}
+\approx
+\rho\,\operatorname{EMA}[u^\ell].
 $$
+
+这就是 Eq. (5) 最直观的解释：
+
+> 让衰减更新的平均幅度，维持在近期数据驱动更新平均幅度的某个比例附近。
+
+例如：
+
+$$
+\overline{|W|}=0.1,
+\quad
+\operatorname{EMA}[u]=4\times10^{-4},
+\quad
+\rho=0.25,
+$$
+
+那么：
+
+$$
+\lambda=10^{-3},
+$$
+
+平均 decay 幅度为：
+
+$$
+10^{-3}\times0.1=10^{-4},
+$$
+
+恰好是数据增量幅度的四分之一。
+
+如果数据驱动更新减弱十倍，控制器也会把 decay 降低十倍，而固定 \(\lambda\) 不会响应这种变化。
+
+你强调只测量 **pre-decay** 增量，也很合理。否则 decay 自己造成的参数变化可能被算作“学习驱动力”，再反过来支持更大的 decay。
+
+不过，我会给这条公式划定三个边界：
+
+* 它控制的是平均绝对幅度的比例，不是每个连接的比例。
+* 数据增量可能与权重同向，也可能反向，因此它不保证权重范数增加或避免所有 collapse。
+* replay 使用 mask，且一个 waking batch 可能触发多次 replay，所以这不是“整个 batch 累计 decay 必定等于 waking 学习量的 25%”。
+
+因此，“the decay removes a fixed fraction of what learning currently adds”略显宽泛；写成**匹配衰减与数据驱动更新的平均幅度比例**会更精确。
+
+另外，类别数增加或深度增加导致有效学习信号减弱，是你的实验与机制分析支持的解释，并不是 Eq. (5) 自身证明的普遍规律。
 
 ---
 
-# 11. “One constant” 这个 claim 也建议稍微降一点
+**最后读 skip synapses，我会把它理解成对计算图的扩展，而不是新的隔离原理。**
 
-你说：
-
-> “One dimensionless constant replaces per-dataset decay tuning.”
-
-但公式实际上至少出现：
+按照你给出的文字，深层隐藏单元可以写成：
 
 $$
-\rho=0.25,\qquad
-\lambda_{\max}=0.02,
-$$
-
-而 EMA 本身还必然有一个 smoothing coefficient。
-
-所以严格意义上不是“整个 controller 只有一个 constant”。
-
-真正漂亮、而且准确的 claim 是：
-
-> **One dataset-independent ratio target replaces per-dataset decay tuning.**
-
-然后说明：
-
-> \(\rho\) is the only control target; \(\lambda_{\max}\), EMA coefficient and numerical floor are globally fixed safeguards and are never tuned per dataset.
-
-这就不会被 reviewer 用一句：
-
-> “But Eq. 4 visibly contains multiple constants.”
-
-打回来。
-
----
-
-# 12. Depth 结果很强，但 causal wording 要收一点
-
-现在你的 argument 是：
-
-> skip connections rescue fixed-decay deep system → collapse is located in error-path attenuation.
-
-数据确实很有意思：adaptive controller 让 4/5 层不再直接死掉，local skips 进一步把 5-layer 带回约：
-
-$$
-91.5/96.2,
-$$
-
-接近 2-layer record。
-
-但 forward skip connection 同时会改变：
-
-* representation；
-* forward conditioning；
-* effective depth；
-* activity distribution；
-* error path。
-
-所以严格来说：
-
-> “locating the collapse in error-path attenuation”
-
-还是有点 causal overclaim。
-
-建议变成：
-
-> “consistent with error-path attenuation being a principal contributor.”
-
-如果你已经有 layerwise \(\|\epsilon^\ell\|\) 或 update norm 随 depth 的 plot，那就可以强 claim；没有的话就保持 “consistent with”。
-
----
-
-# 13. 实验设计：这一版其实已经相当扎实
-
-这部分是我觉得提升最大的地方。
-
-现在不只是给一个 headline accuracy，而是有：
-
-$$
-\text{batch-size sweep}
-$$
-
-直接验证 micro-batch hypothesis；
-
-$$
-\text{rotation / isolation / replay ablations}
-$$
-
-验证 component necessity；
-
-$$
-\text{mirror direction}
-$$
-
-验证 conceptual inversion；
-
-$$
-\text{soft vs hard rotation}
-$$
-
-验证 ON/OFF design；
-
-$$
-\text{Adam masked/leak / heavy-ball / SGD}
-$$
-
-验证 optimiser-state mechanism；
-
-$$
-\text{clocked / pressure / surprise timing}
-$$
-
-验证 triggering；
-
-再加：
-
-* raw CIFAR-10；
-* feature CIFAR-10；
-* CIFAR-100 stress test；
-* depth scaling；
-* LR sensitivity；
-* small buffer；
-* negative results；
-* static i.i.d. axis；
-* held-out replication。
-
-Table 1 尤其强，因为它不是“堆 baseline”，而是在回答：
-
-> **哪个机制实际上在起作用？**
-
-例如 full 92.7、no rotation 88.8、no isolation 87.0、no replay 19.6、mirror 77.9，已经形成一个相当完整的 causal story。
-
-对于 workshop paper，我认为这部分已经超过“够用”。
-
----
-
-# 14. CIFAR-10 现在也比上一版更有说服力
-
-raw CIFAR-10：
-
-$$
-29.5\pm0.8
->
-26.2\pm0.6\ {\rm night}
->
-25.1\pm1.5\ {\rm BP+ER}.
-$$
-
-feature CIFAR：
-
-$$
-41.5\pm1.1
->
-35.0\pm0.5\ {\rm night},
-$$
-
-但：
-
-$$
-BP+ER=43.2\pm1.0.
-$$
-
-
-
-这个结果现在的解释是健康的：你没有再把故事包装成“local biological learner beats BP universally”，而是拆 substrate，发现 dense activation/accounting 可以解释一部分 gap。
-
-这反而让 paper 更可信。
-
----
-
-# 15. 我最担心的实验方法学问题反而是你自己已经坦白的：test-set tuning
-
-Appendix J 写得非常直接：
-
-> “Every configuration choice made during development — some four hundred sequential-axis configurations — was made on the official test sets.”
-
-然后你另外拿 training set 的 10% 做一个从未训练过的 held-out split，重新验证 headline ordering：
-
-$$
-\rho_{\rm Spearman}=0.92,
-$$
-
-且主要 ordering 保持。
-
-这个 transparency 我非常赞同。
-
-但 reviewer 仍然可能说：
-
-> benchmark test accuracy 经过数百次 config search，headline 92.7 存在 optimistic selection bias。
-
-而且 held-out 上：
-
-$$
-92.7\rightarrow91.6
-$$
-
-default rotation，
-
-night 是：
-
-$$
-90.7\pm2.2.
-$$
-
-
-
-也就是说 independent held-out 依然支持 ordering，但**effect size 已经不像 official test 上的 2 points 那么漂亮**。
-
-我不会删除这个 limitation；恰恰相反，要保留。
-
-如果 deadline 前还能做一件统计上的事，我最推荐的不是再跑一个复杂 ablation，而是：
-
-> **冻结现在所有 hyperparameters，然后对 untouched held-out split 多跑一些 seeds，最好 6–10 seeds。**
-
-如果有算力，再做 3 个 fixed stratified splits。
-
-这对于 reviewer confidence 的提升，会比再加一种 mechanism 大。
-
----
-
-# 16. Headline comparison 最好报告 paired difference / CI
-
-目前：
-
-$$
-92.7\pm0.3
-$$
-
-vs.
-
-$$
-90.7\pm0.4
-$$
-
-看起来很好。
-
-但两边 architecture 还不完全一样：night headline 用它自己的 preferred narrow substrate，而你也同时报告 same-substrate night 90.9±3.2。这种设计其实很公平——你给 baseline 选了它更喜欢的 substrate——但 reviewer 会问：
-
-> are these seeds paired? how were hyperparameters selected?
-
-最好附一个：
-
-$$
-\Delta A
+z^\ell
 =
-A_{\rm local}-A_{\rm night}
+W^\ell a^{\ell-1}
++
+S^\ell a^{\ell-2}
++
+b^\ell.
 $$
 
-的 bootstrap / paired CI。
-
-同时 Appendix C 把 baseline sweep 说清楚：
-
-* night 搜了哪些 LR / widths / replay batches；
-* BP+ER 搜了哪些 LR；
-* local 搜了哪些；
-* selection criterion 是 sequential 还是 joint sequential/static。
-
-这样可以彻底消除 “local method got more tuning budget” 的疑虑。
-
----
-
-# 17. Surprise-trigger 那段目前说得稍微过头
-
-现在实验是：
-
-> surprise trigger 在该设置下因为 error 从未 crossing threshold，导致 **0 replay events**，accuracy 19.0。
-
-这说明：
+对应 skip 权重的局部数据更新为：
 
 $$
-\boxed{
-\text{the tested surprise trigger failed badly}
-}
+\Delta S^\ell
+\propto
+\varepsilon^\ell(a^{\ell-2})^\top.
 $$
 
-非常充分。
-
-但 contribution 里直接写：
-
-> “Replay is triggered by homeostatic pressure and **never by surprise**.”
-
-
-
-以及：
-
-> “The waking trigger **must** be homeostatic.”
-
-如果没有 extensive surprise-threshold policy sweep，这两个都是 universal claim。
-
-建议改成：
-
-> “Homeostatic triggering consistently outperforms the tested surprise-based trigger.”
-
-或者：
-
-> “Surprise is a poor trigger in our waking-replay regime.”
-
-会稳很多。
-
----
-
-# 18. Energy 部分已经比上一版修得很好
-
-上一版最大的 citation error 是把 0.9 pJ/event 归给 Merolla。
-
-现在已经改成：
-
-> idealised **45-nm FP32 arithmetic-energy proxy [Horowitz, 2014]**
-> 0.9 pJ accumulate vs 4.6 pJ MAC，
-> 并明确说不包括 data movement 和 membrane updates。
-
-这就严谨很多了。
-
-我只建议再换一个词：
-
-不要写：
-
-> 0.9 pJ per **synaptic event**
-
-而直接写：
-
-> 0.9 pJ per **FP32 accumulate (AC)**
-
-因为 Horowitz 给的是 arithmetic operation energy，不是某块 neuromorphic hardware 的真实 synaptic event energy。
-
-你 Discussion 已经主动说：
-
-> “the energy figure is an arithmetic proxy.”
-
-
-
-所以整体已经没什么问题。
-
----
-
-# 19. Reference：上一轮指出的几个硬错误已经修掉了
-
-### Lässig 2023 —— 已修
-
-上一版把 Sorbaro 写成 Sacramento；现在已经正确：
-
-> Lässig, Aceituno, **Sorbaro**, Grewe. 
-
-### Whittington & Bogacz —— 已不再是 orphan reference
-
-现在正文真的引用了它来解释 local predictive-coding-style error propagation。
-
-### Horowitz —— 已修
-
-现在 source 和 proxy 定义基本匹配。
-
----
-
-# 20. 但 reference 还有三个值得修的地方
-
-## Sorrenti 应更新为正式 journal version
-
-稿件仍然写：
-
-> Sorrenti et al. (2024), arXiv:2401.08623. 
-
-现在已经有正式版本：
-
-> **Wake-Sleep Consolidated Learning**,
-> IEEE Transactions on Neural Networks and Learning Systems,
-> **36(7):12668–12679**,
-> DOI **10.1109/TNNLS.2024.3458440**. ([PubMed][3])
-
-按 issue publication，我会写 2025，然后同步把正文 `[Sorrenti et al., 2024]` 改掉。
-
----
-
-## SESLR 仍然缺失，而且现在更应该补
-
-非常接近标题关键词的一篇：
-
-> **Online Continual Learning via Spiking Neural Networks with Sleep Enhanced Latent Replay**,
-> Lin et al., arXiv:2507.02901.
-
-它确实提出 sleep-enhanced latent replay，而且是 online CL + SNN。关键是它的 sleep phase 仍然是：
-
-> model **exclusively trains on replay samples** during the sleep phase.
-
-所以它并不会破坏你的 novelty，反而非常适合拿来建立差异：
+隔离 mask 应相应使用实际发送层：
 
 $$
-\text{SESLR: online learning + exclusive sleep replay}
+M^{\ell,\mathrm{skip}}_{ij}
+=
+\mathbf1
+\left[
+j\notin\mathcal A^{\ell-2}(X)
+\ \lor\
+i\notin\mathcal A^\ell(X)
+\right].
 $$
 
-vs.
+证明仍然沿用原来的思想：如果 skip 的输入单元静默，更新乘上零；如果接收端强制休眠，变化仍被 gate 隐藏；普通 inactive 接收端则继续需要 margin。
 
-$$
-\text{ours: replay concurrent with the live computation}.
-$$
+但 skip 如何参与反馈误差传播，也应该给出对应关系。否则“restore the thick error path”对读者而言主要还是机制描述，尚未完整对应到 Eq. (2) 的计算。
 
-([arXiv][4])
+读完后，若我是审稿人，我会优先要求作者补充以下内容：
 
-我会认为这是**submission 前应该补的近邻工作**，否则 reviewer 搜 “online continual sleep replay” 很可能自己碰到它。
+| 优先补充的内容                             | 它解决的阅读障碍                  |
+| ----------------------------------- | ------------------------- |
+| 明确隐藏层、输出层及 loss 的定义                 | Eq. (1)–(2) 的层编号和输出处理不够明确 |
+| 区分 waking 与 replay 的 suppression    | 休眠单元如何参与 replay 学习尚需读者猜测  |
+| 标明 awake set 对应的参数时间点               | 决定两个命题如何应用于实际训练循环         |
+| 区分参数隔离与优化器状态隔离                      | 避免把较强设计要求写成当前定理的必要条件      |
+| 给出 pressure discharge 与 error 的具体定义 | 控制器目前还不能仅凭文字完整复现          |
 
----
-
-## Tononi & Cirelli 的标题被截断了
-
-现在 bibliography 写：
-
-> “Sleep and the price of plasticity.” 
-
-正式标题是：
-
-> **Sleep and the price of plasticity: from synaptic and cellular homeostasis to memory consolidation and integration.**
-
-([PubMed][5])
-
-不算严重错误，但既然在做 final polishing，建议补完整。
-
----
-
-# 21. 还有一个 citation-to-claim 小问题：burst learning 只引 Whittington 不够
-
-你写：
-
-> “a bounded, event-gated burst signal in the spirit of **predictive-coding and burst-multiplexing learners** [Whittington and Bogacz, 2017].”
-
-
-
-Whittington & Bogacz 主要是 predictive coding / local Hebbian approximation to BP，并不是 burst-dependent credit-assignment 的主要来源。
-
-可以在这里同时加：
-
-> Payeur, Guerguiev, Zenke, Richards & Naud (2021),
-> **Burst-dependent synaptic plasticity can coordinate learning in hierarchical circuits**, Nature Neuroscience 24, 1010–1019.
-
-这篇正好直接讲 burst-dependent plasticity 和 hierarchical credit assignment。([Nature][6])
-
-这样“predictive-coding and burst-multiplexing”两边都有 citation。
-
----
-
-# 22. 版面和可读性
-
-我也实际看了 PDF 页面，而不只是 parsed text。
-
-整体是干净的 NeurIPS 风格，Figure 1 的 mechanism 图比上一版清楚很多；Figure 2 现在把 isolation 与 timing 放在一起也很合理；Figure 3 的 depth/static/controller decay 三联图是 Section 5 最有用的一张图。
-
-正文页 6–8 已经比较密，但仍可读。我的直觉是：
-
-> **不要再往正文塞实验了。**
-
-如果还加东西，优先放 Appendix。
-
-正文现在最值得腾空间做的不是增加结果，而是把 theorem assumptions 写得更严谨。
-
----
-
-# 23. 如果我是 CL4FMAgents reviewer，我大概会这样写
-
-**Strengths** 会是：
-
-> A conceptually novel inversion of parameter-isolation continual learning: instead of protecting past knowledge from current updates, replay updates are constrained to degrees of freedom invisible to the concurrent computation. The use of refractory rotation to actively create such capacity is intuitive and biologically motivated. The paper provides unusually extensive mechanism-focused ablations and is candid about the boundary of its exactness guarantees.
-
-**Weaknesses** 会是：
-
-> The study remains limited to small MLPs and image benchmarks; the connection to foundation-model or embodied-agent settings is conceptual rather than demonstrated. Some theoretical claims need sharper qualification because the default readout remains plastic and the post-asleep channel is only conditionally exact. Hyperparameter development used official test sets. The replay-cost accounting should be clarified.
-
-这其实已经是一个**相当像 workshop Accept 的 review profile**。
-
-尤其 CFP 明确欢迎 theory、algorithms、negative/reproducibility results，并把 knowledge consolidation/online adaptation 写进 topics；所以 MLP scale 本身并不是 out-of-scope。([NeurIPS 2026 Workshop][1])
-
----
-
-# 24. 提交前我会按这个顺序处理
-
-1. **立刻修 92.7 / batch16 / 1.2× replay cost 的矛盾。**这是最优先，不能带着进 review。
-2. **修 Proposition 1：hidden computation exact，不要在 plastic readout 下声称 network output exact。**同步修 Abstract、Intro、Results、Discussion 中 “present computation invariant” 的口径。
-3. 把 theorem 全部显式 batch 化，并补 \(g^\ell\)、bias mask、decay mask、momentum mask/tie conditions。
-4. 把 heavy-ball 的 \(\mu\) 和完整 masked update equation 写进 protocol。
-5. 重定义 adaptive controller 的 drive 为 **pre-decay data-driven update**；补 EMA coefficient、\(\epsilon\) floor，并把 “one constant” 改为 “one shared ratio target”。
-6. Section 5 改成 **scaling stress test / self-referenced control** 的叙事，避免像第二篇 paper。
-7. 把 “must/never/provably” 这类 universal wording 再扫一遍，特别是 surprise trigger、absolute threshold 和 depth causal explanation。
-8. Reference 补 SESLR；Sorrenti 换 journal version；Tononi 补全标题；burst learning 加 Payeur et al. 2021。
-9. 如果还有计算时间，优先增加 **untouched held-out 的 seeds**，而不是再加 ablation。
-10. 如果还有更多时间且想冲 oral，可以考虑一个非常轻量的 **frozen foundation encoder + sparse continual adapter** 实验，例如冻结视觉 foundation representation，只训练你的 sparse local head。它不需要成为性能主结果，只要证明 “silent-degree mechanism survives on FM features”，就会显著加强与 CL4FMAgents 的直接连接。
-
----
-
-## 我的最终判断
-
-**我会投，而且觉得这个 venue 选得不错。**
-
-相比你给我的上一稿，这一稿已经解决了最危险的一部分问题：你不再把所有 isolation 都包装成 unconditional exact，优化器的故事更完整，实验也从“几组 accuracy”发展成了真正的 mechanism triangulation。论文现在最有辨识度的核心已经相当明确：
-
-$$
-\boxed{
-\text{Inference exposes temporary unused degrees of freedom;}
-}
-$$
-
-$$
-\boxed{
-\text{refractory rotation actively enlarges them;}
-}
-$$
-
-$$
-\boxed{
-\text{replay uses them for concurrent consolidation.}
-}
-$$
-
-这就是 **Inference as Consolidation** 这个标题现在能够站得住的原因。
-
-目前让我不建议“直接原样上传”的主要原因其实只有两个：**2.4×/1.2× cost accounting** 和 **plastic readout 下 Proposition 1 仍写 network-output invariance**。这两个修完以后，我对这篇作为 CL4FMAgents regular paper 的评价会从“有明显 reviewer 把柄”提升到“理论边界和实验边界都讲得比较诚实、机制又有辨识度”的状态。
-
-顺带一提，官方目前显示 deadline 已延到 **2026-09-07 11:59 PM AoE**。([NeurIPS 2026 Workshop][1]) 所以从优先级上，我不会再扩展主故事，而会把剩余时间全部用于**消灭内部不一致 + theorem formalization + reference cleanup**。
-
-[1]: https://neurips26-cl4fmagents.github.io/?utm_source=chatgpt.com "Continual Learning in the Era of Foundation Models and Embodied Agents — NeurIPS 2026 Workshop"
-[2]: https://www.nature.com/articles/s41593-026-02318-9?utm_source=chatgpt.com "Induction of cortical on/off periods in awake mice fulfills sleep functions | Nature Neuroscience"
-[3]: https://pubmed.ncbi.nlm.nih.gov/39325610/?utm_source=chatgpt.com "Wake-Sleep Consolidated Learning."
-[4]: https://arxiv.org/abs/2507.02901?utm_source=chatgpt.com "Online Continual Learning via Spiking Neural Networks with Sleep Enhanced Latent Replay"
-[5]: https://pubmed.ncbi.nlm.nih.gov/24411729/?utm_source=chatgpt.com "Sleep and the price of plasticity: from synaptic and cellular homeostasis to memory consolidation and integration - PubMed"
-[6]: https://www.nature.com/articles/s41593-021-00857-x?utm_source=chatgpt.com "Burst-dependent synaptic plasticity can coordinate learning in hierarchical circuits | Nature Neuroscience"
+就降低理解成本而言，我最希望看到的是：**一个贯穿 Proposition 1、Proposition 2、Corollary 1 的小型数值例子，加上一段标明状态与更新顺序的伪代码。**前者让读者理解“为什么不可见”，后者让读者确认“程序实际执行的是否就是证明里的那一步”。

@@ -820,6 +820,13 @@ CONFIGS = {
            "isolated": dict(hidden=(512, 256), active_frac=0.10, opt="sgd", eta=0.02, readout="isolated"),
            "adam5": dict(hidden=(512, 256), active_frac=0.05, readout="free"),
        }.items()},
+    # 23 (method review): as g21, but the awake set is recomputed AFTER the waking update
+    # (mask_post_wake) -- does the ordering wake-update -> mask matter for the exactness?
+    **{f"g25_diag_postwake_{name}": dict(model="ctx", schedule="local", buffer=1000, policy="random",
+                                         batch_wake=16, cadence=1, batch_replay=16, mask="refractory",
+                                         diag_drift=True, mask_post_wake=True, hidden=(512, 256),
+                                         active_frac=0.10, opt="sgd", eta=0.02, readout=name)
+       for name in ("free", "isolated")},
     # 20C wave 2: the thin-signal axis wants capacity and replay volume, not depth --
     # width (more representational room at the same chain length), K=5000 (50/class instead
     # of 10), and their combination, all d2 + controller on the feature front.
@@ -1665,6 +1672,16 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                 else:
                     net.local_update(x, a, eps, eta0 * batch_wake / 256, 1e-3)
                 buf.offer(Xb, yb, (eps[net.L] ** 2).sum(1))
+                if cfg.get("mask_post_wake"):
+                    # 23 (method review): the awake set is normally read off the waking forward
+                    # pass, i.e. BEFORE the waking update moved the weights; this variant re-infers
+                    # the batch under the same suppression after that update, so the isolation
+                    # mask refers to the weights the replay step actually acts on.
+                    sup_now, net.suppress = net.suppress, sup_wake
+                    net.training = False
+                    _, a = net.forward(Xb)
+                    net.training = True
+                    net.suppress = sup_now
                 # who is awake for this input?
                 awake = [None]
                 for l in range(1, net.L):

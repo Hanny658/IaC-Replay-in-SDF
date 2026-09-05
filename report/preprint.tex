@@ -5,6 +5,8 @@
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmic}
 \usepackage{microtype}
 \usepackage{xcolor}
 \usepackage{tikz}
@@ -254,15 +256,17 @@ a^\ell = \Phi_k\!\big(\sigma(z^\ell)\odot(1-s^\ell)\big),
 where $\sigma$ is a rectifier, $s^\ell \in \{0,1\}^{n_\ell}$ is the (possibly empty)
 \emph{suppression mask} of Section~\ref{sec:rotation}, and $\Phi_k$ keeps the $k$ largest entries
 of each row and zeroes the rest (\kwta); a per-unit gain exists in the implementation for
-homeostatic scaling but is fixed at $1$ throughout. Errors are produced by one top-down sweep: with target
-$y$,
+homeostatic scaling but is fixed at $1$ throughout. Layers $1,\dots,L{-}1$ are hidden; layer $L$
+is a linear $C$-way readout whose pre-activation $z^L$ is the output, scored by squared error
+against the one-hot target $y$. Errors are produced by one top-down sweep,
 \begin{equation}
 \varepsilon^L = y - z^L, \qquad
 \varepsilon^\ell = \sigma'(z^\ell)\odot\Big((B^\ell)^{\!\top} \big[\kappa\tanh(\varepsilon^{\ell+1}/\kappa)
 \odot \mathbf{1}(a^{\ell+1}>0)\big]\Big),
 \label{eq:sweep}
 \end{equation}
-i.e.\ a bounded, event-gated burst signal carried by learned feedback weights
+i.e.\ a bounded ($|\varepsilon^\ell_i|\le\kappa\sum_j|B^\ell_{ji}|$ per component), event-gated
+burst signal carried by learned feedback weights
 $B^\ell\in\mathbb{R}^{n_{\ell+1}\times n_\ell}$ (no transport), in the spirit of
 predictive-coding and burst-dependent learners with local plasticity
 \citep{whittington2017,payeur2021}. Forward and feedback weights follow the same local product with a shared decay
@@ -291,7 +295,8 @@ M^\ell_{ij} \;=\; \mathbf{1}\big[\, j \notin \mathcal{A}^{\ell-1}(X) \;\lor\; i 
 i.e.\ a synapse may take the replay update iff its presynaptic unit is silent for the current
 input or its postsynaptic unit is asleep. The mask applies to the \emph{entire} replay-induced
 parameter change, not only to the data gradient: with heavy-ball velocity $v$ ($\mu=0.9$),
-data gradient $G$ and decay $\lambda$, a replay step is
+the local update direction $G=\varepsilon^\ell(a^{\ell-1})^{\!\top}$ of \eqref{eq:kp} and the
+per-step decay coefficient $\lambda$, a replay step is
 \begin{equation}
 v\leftarrow M\odot(\mu v+G)+(1-M)\odot v,\qquad
 W\leftarrow W+\eta\,M\odot v-\lambda\,M\odot W,
@@ -304,7 +309,11 @@ second moments are confined the same way. As \citet{mckee2026} caution and
 re-inject the isolated update into awake synapses, voiding the exactness guarantees below;
 the accuracy consequences of this choice are dissected in Section~\ref{sec:ablation}. The
 readout row and its bias remain plastic (old classes must stay calibrated); the guarantees
-below concern the hidden computation.
+below concern the hidden computation. Within one waking step the order is: forward pass on $X$ under the current suppression,
+unmasked waking update, awake sets read from that forward pass, masked replay update on the
+updated weights (Algorithm~\ref{alg:step}, Appendix~\ref{app:alg}); the replay micro-batch is inferred with the
+suppression removed, so a refractory unit may fire on replay and learn from it, and a burst
+of several micro-batches reuses its waking batch's mask.
 
 \begin{proposition}[Pre-silent updates are exactly invisible]
 \label{prop:pre}
@@ -335,9 +344,14 @@ cannot promote the unit), the hidden activities on $X$ are unchanged.
 \begin{proof}
 A unit outside $\mathcal{A}^\ell(X)$ contributes $a^\ell_{i,b}=0$ on every sample. After the
 update its pre-activation on sample $b$ is $z^\ell_{i,b}+\delta_{i,b}$; under the stated margin
-it is still excluded by $\Phi_k$ (or rectified to zero), so $a^\ell_{i,b}=0$ still, all other
-units' inputs are untouched by Proposition~\ref{prop:pre}'s argument, and the layer's
-activities are identical.
+it is still excluded by $\Phi_k$ (or rectified to zero), so $a^\ell_{i,b}=0$ still. The sample's
+original winners keep their pre-activations --- their synapses from active presynaptic units
+lie outside $\Delta^\ell$ by the mask, and their silent-presynaptic terms vanish as in
+Proposition~\ref{prop:pre} --- so the same $k$ units win with the same values, every other
+unit's input is untouched, and the layer's activities are identical. When fewer than $k$ units
+are positive on sample $b$, $\tau^\ell_{k,b}=0$ and the condition reads
+$\sigma(z^\ell_{i,b}+\delta_{i,b})=0$: a zero-valued entry carries no activity whether or not
+$\Phi_k$ selects it.
 \end{proof}
 
 \begin{corollary}[Suppressed units are exact for any magnitude]
@@ -356,7 +370,13 @@ almost all of it the plastic readout, since the same count is $0.001\%$ with the
 isolated (hidden code $0.21\%$) --- and violated the margin condition for $\sim\!10^{-4}$ of
 the asleep units per step. The isolation is thus exact for silent-presynaptic and suppressed
 units and near-exact elsewhere; Corollary~\ref{cor:refr} is why the refractory rotation makes
-it robust rather than merely approximate. (An earlier logged check that reported zero drift
+it robust rather than merely approximate. The rates are taken under the implemented order of
+Algorithm~\ref{alg:step} (Appendix~\ref{app:alg}), in which the awake sets come from the
+activities before the waking update; re-inferring the batch after that update and masking on
+the post-update awake sets lowers the hidden-code rate to $0.30\%$ ($0.17\%$ with the readout
+isolated) and leaves the prediction rate ($0.30\%$; $0.000\%$ isolated), the margin-violation
+rate and the accuracy unchanged ($92.2$ vs.\ $92.0$, one seed): the residual drift is the
+unenforced margin, not the ordering. (An earlier logged check that reported zero drift
 was taken on single batches, where the per-unit flip rate makes zero the typical outcome; the
 population rates above supersede it.)
 \end{remark}
@@ -370,18 +390,23 @@ every unit that fired sits out the next competition and is therefore asleep --- 
 --- for batch $X_{t+1}$.
 \end{definition}
 
-Rotation widens the isolated channel $\rho_\ell$ from $0.2$--$0.3$ (natural silence) to
-$\approx0.53$, at the price of running inference on the second-best coalition. Two internal
+Rotation widens the isolated channel
+$\rho_\ell=|\tilde{\mathcal{A}}^\ell\setminus\mathcal{A}^\ell(X)|/|\tilde{\mathcal{A}}^\ell|$ --- the fraction of
+the units $\tilde{\mathcal{A}}^\ell$ activated by the replay micro-batch that are asleep for the current
+input --- from $0.2$--$0.3$ (natural silence) to $\approx0.53$, at the price of running inference on the second-best coalition. Two internal
 signals control the system (Figure~\ref{fig:mech}):
 
 \paragraph{Homeostatic pressure (when to replay).} Each unit integrates its own use,
-$S_i \leftarrow S_i + \bar a_i(x_t)$, and a replay \emph{burst} of $n_b$ consecutive batches is
-triggered when the mean pressure of currently asleep units exceeds $\theta$; consolidation
-discharges the pressure of the units that received it, $S_i \leftarrow (1-\mathbf{1}[i\ \mathrm{asleep}])\,S_i$.
+$S_i \leftarrow S_i + \bar a_i(X_t)$ with $\bar a_i(X_t)$ the fraction of the batch's samples on
+which unit $i$ fired, and a replay \emph{burst} of $n_b$ consecutive micro-batches (one mask for
+all of them) is triggered when the mean pressure over the currently asleep units of all hidden
+layers exceeds $\theta$; consolidation discharges the pressure of the units that received it,
+$S_i \leftarrow (1-\delta\,\mathbf{1}[i\ \mathrm{asleep}])\,S_i$ with $\delta=1$ throughout.
 This is a unit-level analogue inspired by the homeostatic Process~S of sleep regulation
 \citep{borbely1982}.
 
-\paragraph{Relative novelty (when to rotate).} With fast and slow EMAs of the batch error
+\paragraph{Relative novelty (when to rotate).} With fast and slow EMAs of the batch-mean
+squared output error $e_t$,
 $\bar e_f(t) = (1{-}\alpha_f)\bar e_f + \alpha_f e_t$, $\alpha_f{=}0.1$, and
 $\bar e_s$, $\alpha_s{=}0.002$, rotation runs only while
 \begin{equation}
@@ -468,7 +493,9 @@ written only into synapses whose update is invisible to the current input --- ex
 silent presynaptic and suppressed units (Propositions~\ref{prop:pre}--\ref{prop:post});
 refractory rotation forces recently used units
 into the consolidable set (Corollary~\ref{cor:refr}). (b) Two internal signals: unit-level
-homeostatic pressure triggers replay bursts; a relative-novelty gate decides when rotation runs.}
+homeostatic pressure triggers replay bursts; a relative-novelty gate decides when rotation runs. The default system runs rotation always on and replays one micro-batch at every
+waking batch; the pressure trigger and the novelty gate are the schedulers studied under
+sparse replay budgets and lower activity fractions.}
 \label{fig:mech}
 \end{figure}
 
@@ -781,11 +808,13 @@ always-on rotation.
 The middle block tests the exactness requirement itself and retains the table's sharpest
 surprise. Propositions~\ref{prop:pre}--\ref{prop:post} require Adam's moments to advance
 only inside the mask: state advancing outside re-injects the replay gradient into awake
-synapses through the next unmasked waking step, and output-neutrality is lost. Empirically,
+synapses through the next unmasked waking step: the present batch's invariance still holds,
+since the weight change itself stays masked, but the confinement of the update over time is
+lost. Empirically,
 however, the leak \emph{helps} sequentially --- $92.6\pm0.3$ vs.\ $91.8\pm0.6$. Exact state
 confinement, not isolation, is what holds masked Adam below heavy-ball SGD: moments
 frozen outside each batch's mask go stale across a unit's on/off cycles \citep{bricken2023},
-and either remedy --- letting the moments track every gradient (surrendering the guarantee)
+and either remedy --- letting the moments track every gradient (surrendering that temporal confinement)
 or replacing two moments by one velocity --- recovers most of the gap. The velocity is the
 least state that keeps the guarantee and the accuracy at once: it advances only inside the
 mask, and removing it as well (momentum zero, Table~\ref{tab:ablation}) costs $2.8$/$4.6$
@@ -895,9 +924,9 @@ where $u^\ell$ is the mean magnitude of the data-driven, post-optimiser, \emph{p
 waking increment applied to layer $\ell$ (so the decay never feeds its own drive), the EMA
 (coefficient $0.02$) runs over waking, unmasked steps only, $\epsilon=10^{-12}$ floors the
 denominator, and $W^\ell$ and $B^{\ell-1}$ share $\lambda_\ell$, so Kolen--Pollack alignment
-is untouched. The decay removes a fixed fraction of what learning currently adds: layers and
-regimes with rich supervision keep a strong regulariser, starved ones are automatically
-spared. $\rho$ is the only control target; $\lambda_{\max}$, the EMA coefficient and
+is untouched. The decay's mean magnitude per step, $\lambda_\ell\overline{|W^\ell|}$, is held at
+the fraction $\rho$ of the mean data-driven update magnitude: layers and regimes with rich
+supervision keep a strong regulariser, starved ones are automatically spared. $\rho$ is the only control target; $\lambda_{\max}$, the EMA coefficient and
 $\epsilon$ are global safeguards never tuned per dataset. Isolation and rotation decide
 \emph{where} and \emph{when} to consolidate; the controller decides \emph{how strongly} to
 update as the scale changes, by the principle behind every control signal in this paper ---
@@ -961,7 +990,7 @@ $3\times10^{-6}$ in the starved middle layers. The residual toll is then archite
 a biologically unexceptional bypass removes it. ResNet-style skip synapses --- $S^\ell$
 carrying $a^{\ell-2}$ into each deep hidden layer, learned by the same local product with a
 Kolen--Pollack feedback twin and the shared per-layer decay, and replay-masked under the
-same pre-or-post-asleep rule --- restore the thick error path, and the five-hidden-layer
+same pre-or-post-asleep rule (Appendix~\ref{app:alg}) --- restore the thick error path, and the five-hidden-layer
 system returns to the two-layer record on \emph{both} axes: $91.5\pm0.4$ sequential,
 $96.2\pm0.3$ static, with $96.3\pm0.2$ at depth four the best i.i.d.\ accuracy of the
 project. The bypass alone also rescues the fixed decay ($91.3/93.6$ at depth five), consistent with
@@ -1170,6 +1199,79 @@ which sharpens, rather than blurs, the division of labour between wake and sleep
 % ---------------------------------------------------------------- appendices
 \clearpage
 \appendix
+
+\section{One training step, the three channels and the skip path}
+\label{app:alg}
+Algorithm~\ref{alg:step} lists one waking step of the default system with the state each
+quantity is read from. Two conventions matter for the guarantees. First, the awake sets are
+read from the waking forward pass, i.e.\ from the weights before the unmasked waking update,
+while the masked replay step acts on the updated weights;
+Propositions~\ref{prop:pre}--\ref{prop:post} hold verbatim for a mask computed on the weights
+being updated, and the drift reported in Section~\ref{sec:isolation} is measured under the
+implemented order. Second, the replay micro-batch is inferred with the suppression removed,
+so a refractory unit may fire on replay and receive the update (Corollary~\ref{cor:refr}
+makes that update invisible to the waking batch for any magnitude), and a burst of $n_b$
+micro-batches reuses the mask of its waking batch. The waking step is $\eta_w=\eta\,m/256$
+for a waking batch of $m$ samples (the per-epoch drift of a batch-$256$ protocol), the replay
+step $\eta_r=3\eta$ per micro-batch, with $\eta=0.02$ throughout.
+
+\begin{algorithm}[h]
+\caption{One waking step of the default system (rotation always on, one burst per batch).}
+\label{alg:step}
+\begin{algorithmic}[1]
+\REQUIRE weights $W_t$, velocities $v_t$, suppression $s(t)$, buffer $\mathcal{M}$, pressures $S$
+\STATE $a\leftarrow\mathrm{forward}(X_t;\,W_t,\,s(t))$,\ \ $\varepsilon\leftarrow\mathrm{sweep}(a,y_t)$ \hfill Eqs.~\eqref{eq:forward}--\eqref{eq:sweep}
+\STATE $(W,v)\leftarrow$ unmasked heavy-ball step on $(W_t,v_t)$ with $G^\ell=\varepsilon^\ell(a^{\ell-1})^{\!\top}$, rate $\eta_w$ \hfill wake update
+\STATE $\mathcal{A}^\ell\leftarrow\{i:\exists b,\ a^\ell_{i,b}\neq0\}$ for every hidden layer;\ \ $S_i\leftarrow S_i+\bar a_i(X_t)$ \hfill from the pre-update $a$
+\STATE $M^\ell\leftarrow$ Eq.~\eqref{eq:mask}, unit mask $\mathbf{1}[i\notin\mathcal{A}^\ell]$, readout row and bias unmasked
+\STATE $s^\ell_i(t{+}1)\leftarrow\mathbf{1}[i\in\mathcal{A}^\ell]$ \hfill refractory rotation
+\STATE write $(X_t,y_t)$ into $\mathcal{M}$ (reservoir)
+\FOR{each of the $n_b$ replay micro-batches $(X_r,y_r)\sim\mathcal{M}$}
+\STATE $a_r\leftarrow\mathrm{forward}(X_r;\,W,\,s{=}0)$,\ \ $\varepsilon_r\leftarrow\mathrm{sweep}(a_r,y_r)$ \hfill suppression removed
+\STATE $(W,v)\leftarrow$ masked step, Eq.~\eqref{eq:maskedstep}, with $G^\ell=\varepsilon^\ell_r(a^{\ell-1}_r)^{\!\top}$, rate $\eta_r$, masks $M^\ell$
+\ENDFOR
+\STATE $S_i\leftarrow0$ for every $i\notin\mathcal{A}^\ell$ if a burst ran \hfill discharge
+\RETURN $W_{t+1}=W$,\ $v_{t+1}=v$,\ $s(t{+}1)$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{The three channels.} Table~\ref{tab:channels} lists the three ways a synapse
+enters the mask \eqref{eq:mask} and what each guarantees; the rotation of
+Section~\ref{sec:rotation} exists to move synapses from the second row into the third.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{llll}
+\toprule
+Channel & Condition & Invisible to $X$ & Source \\
+\midrule
+presynaptic silent & $j\notin\mathcal{A}^{\ell-1}(X)$ & for any magnitude & Prop.~\ref{prop:pre} \\
+postsynaptic naturally asleep, active pre & $i\notin\mathcal{A}^{\ell}(X)$, $s^\ell_i=0$ & under the margin $\tau^\ell_{k,b}$ & Prop.~\ref{prop:post} \\
+postsynaptic suppressed & $s^\ell_i=1$ & for any magnitude & Cor.~\ref{cor:refr} \\
+\bottomrule
+\end{tabular}
+\caption{\textbf{The three consolidation channels} opened by the synapse mask.}
+\label{tab:channels}
+\end{table}
+
+\paragraph{A numerical example.} On one sample with $k=2$ and $\sigma(z)=(3,2,0.5,0)$, units
+$3$ and $4$ are asleep and $\tau_k=2$. Any replay update with $\sigma(z_3+\delta_3)<2$ and
+$\sigma(z_4+\delta_4)<2$ leaves the activity vector $(3,2,0,0)$ unchanged, because the two
+winners' own inputs are not touched; if unit $4$ is refractory ($s_4=1$) its bound is void and
+$\delta_4$ may be arbitrarily large; and every synapse leaving unit $4$ into the next layer may
+move by any amount, since its presynaptic activity is zero.
+
+\paragraph{Skip synapses.} For $\ell\ge3$ each deep hidden layer receives a bypass,
+$z^\ell=W^\ell a^{\ell-1}+S^\ell a^{\ell-2}+b^\ell$, with $S^\ell$ under the same Dale
+projection and a feedback twin $B_S^{\ell}\in\mathbb{R}^{n_{\ell+2}\times n_\ell}$ that carries the
+bypass target's burst back to its source,
+\[
+\varepsilon^{\ell}\leftarrow\varepsilon^{\ell}+\sigma'(z^{\ell})\odot\Big((B_S^{\ell})^{\!\top}\big[\kappa\tanh(\varepsilon^{\ell+2}/\kappa)\odot\mathbf{1}(a^{\ell+2}>0)\big]\Big),
+\]
+$S^\ell$ and $B_S^{\ell-2}$ learned by the local product of \eqref{eq:kp} with the target
+layer's decay $\lambda_\ell$, and replay-masked by the same rule two layers apart,
+$M^{\ell}_{S,ij}=\mathbf{1}[\,j\notin\mathcal{A}^{\ell-2}(X)\ \lor\ i\notin\mathcal{A}^{\ell}(X)\,]$,
+so that Propositions~\ref{prop:pre}--\ref{prop:post} extend unchanged.
 
 \section{The price of the substrate}
 \label{app:substrate}

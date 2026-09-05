@@ -516,9 +516,10 @@ class CortexNet:
             return float(d.abs().mean())
         on = mask > 0
         if getattr(self, "leak_moments", False):
-            # 12b ablation: the weight change stays confined to the mask but the optimiser state
-            # advances everywhere -- the leak that voids Proposition 1 (replay momentum re-enters
-            # awake synapses through the next unmasked waking step).
+            # 12b ablation: the weight change stays confined to the mask (the present batch's
+            # invariance, Prop. 1, still holds) but the optimiser state advances everywhere -- the
+            # leaked replay moments re-enter awake synapses through the next unmasked waking
+            # step, so the update is no longer confined over time.
             m[l] = betas[0] * m[l] + (1 - betas[0]) * g
             v[l] = betas[1] * v[l] + (1 - betas[1]) * g * g
         else:

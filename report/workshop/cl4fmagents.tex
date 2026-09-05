@@ -14,6 +14,8 @@
 \usepackage{xcolor}
 \usepackage{microtype}
 \usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algorithmic}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,patterns,calc}
 \graphicspath{{../figs/}}
@@ -120,9 +122,9 @@ the ones a larger system would have to satisfy to inherit the guarantee.
 offline phase driven by noise under local plasticity \citep{tadros2022,bazhenov2026,golden2022,kubo2025};
 wake--sleep frameworks with NREM/REM stages \citep{sorrenti2024,robinson2022} and systems such
 as SIESTA \citep{harun2023} likewise schedule consolidation offline, and SESLR \citep{lin2026}
-appends a noise-enhanced sleep phase --- a spiking classifier on a frozen extractor training
-exclusively on its replay buffer --- to correct the recency bias left by online learning. In
-all of these sleep is global, offline and clocked; none consolidates in currently unused
+appends a noise-enhanced sleep phase (a frozen-extractor spiking classifier training only on
+its buffer) to correct online learning's recency bias. In all of these sleep is global,
+offline and clocked; none consolidates in currently unused
 units during inference, and the bias correction such a phase delivers is what our plastic
 readout receives continuously from isolated replay.
 
@@ -142,8 +144,8 @@ frozen subnetworks \citep{golkar2019,mallya2018}. We invert the protected direct
 ongoing computation is held invariant while old-memory replay is written into degrees of
 freedom the current sparse support exposes as invisible --- no stored bases or task masks, and
 the ``null space'' changes every batch for free. \citet{mckee2026} and \citet{bricken2023}
-note that optimiser state can break such guarantees; we adopt mask-confined optimiser state
-rather than claiming it. Complementary-learning-system methods \citep{arani2022,pham2021} raise
+note that optimiser state can break such guarantees; ours is mask-confined.
+Complementary-learning-system methods \citep{arani2022,pham2021} raise
 the value of each replayed sample but still replay at every step; learned replay scheduling
 \citep{klasson2023} is related to our trigger study.
 
@@ -171,22 +173,23 @@ a^\ell = \Phi_k\!\big(\sigma(z^\ell)\odot(1-s^\ell)\big),
 where $\sigma$ is a rectifier, $s^\ell\in\{0,1\}^{n_\ell}$ the suppression mask of the
 rotation rule below, and $\Phi_k$ keeps the $k$ largest entries of each row (\kwta); a
 per-unit gain exists in the implementation for homeostatic scaling but is fixed at $1$
-throughout. Errors
-come from one top-down sweep through learned feedback weights
+throughout. Layers $1,\dots,L{-}1$ are hidden; layer $L$ is a linear $C$-way readout whose
+pre-activation $z^L$ is the output, scored by squared error against the one-hot target $y$.
+Errors come from one top-down sweep through learned feedback weights
 $B^\ell\in\mathbb{R}^{n_{\ell+1}\times n_\ell}$ (no weight transport),
 \begin{equation}
 \varepsilon^L = y - z^L,\qquad
 \varepsilon^\ell = \sigma'(z^\ell)\odot\Big((B^\ell)^{\!\top}\big[\kappa\tanh(\varepsilon^{\ell+1}/\kappa)\odot\mathbf{1}(a^{\ell+1}>0)\big]\Big),
 \label{eq:sweep}
 \end{equation}
-a bounded, event-gated burst signal in the spirit of predictive-coding and burst-dependent
-learners \citep{whittington2017,payeur2021}. Forward and feedback weights follow the same local product
+a bounded ($|\varepsilon^\ell_i|\le\kappa\sum_j|B^\ell_{ji}|$ per component), event-gated burst
+signal in the spirit of predictive-coding and burst-dependent learners \citep{whittington2017,payeur2021}. Forward and feedback weights follow the same local product
 with a shared decay $\lambda$ (Kolen--Pollack alignment \citep{kolen1994,akrout2019}),
 $\Delta W^\ell\propto\varepsilon^\ell(a^{\ell-1})^{\!\top}-\lambda W^\ell$,
 $\Delta B^{\ell-1}\propto\varepsilon^\ell(a^{\ell-1})^{\!\top}-\lambda B^{\ell-1}$, under
 Dale's law with sign-concordant feedback. The optimiser is heavy-ball SGD --- one per-synapse
-velocity, no second-moment state; Section~\ref{sec:results} shows why neither Adam nor
-momentum-free SGD is the right choice inside the consolidation loop. The base learner costs
+velocity, no second-moment state (Section~\ref{sec:results} shows why neither Adam nor
+momentum-free SGD serves inside the consolidation loop). The base learner costs
 $1.2$ points against a dense backpropagation MLP on i.i.d.\ MNIST at $4\times$ fewer synaptic
 operations (Appendix~\ref{app:substrate}).
 
@@ -198,10 +201,11 @@ forward step, a replay micro-batch drawn from the buffer is applied through the 
 M^\ell_{ij}=\mathbf{1}\big[\,j\notin\mathcal{A}^{\ell-1}(X)\ \lor\ i\notin\mathcal{A}^\ell(X)\,\big],
 \label{eq:mask}
 \end{equation}
-i.e.\ a synapse takes the replay update iff its presynaptic unit is silent for the current
-input or its postsynaptic unit is asleep. The mask applies to the \emph{entire}
+i.e.\ iff the presynaptic unit is silent for the current input or the postsynaptic unit is
+asleep. The mask applies to the \emph{entire}
 replay-induced parameter change, not only to the data gradient: with heavy-ball velocity $v$
-($\mu=0.9$), data gradient $G$ and decay $\lambda$, a replay step is
+($\mu=0.9$), the local update direction $G=\varepsilon^\ell(a^{\ell-1})^{\!\top}$ and the per-step
+decay coefficient $\lambda$, a replay step is
 \begin{equation}
 v\leftarrow M\odot(\mu v+G)+(1-M)\odot v,\qquad
 W\leftarrow W+\eta\,M\odot v-\lambda\,M\odot W,
@@ -211,7 +215,10 @@ so the velocity is frozen (not zeroed) outside the mask, the decay is confined t
 biases follow the unit mask $\mathbf{1}[i\notin\mathcal{A}^\ell(X)]$; unmasked momentum would
 re-inject the update into awake synapses \citep{mckee2026,bricken2023}. The readout row and
 its bias stay plastic, so old classes remain calibrated; the guarantees below concern the
-hidden computation.
+hidden computation. Within one step the order is: forward pass under the current suppression, unmasked waking
+update, awake sets from that pass, masked replay on the updated weights; replay is inferred
+with the suppression removed (a refractory unit may fire on replay and learn from it) and a
+burst reuses one mask (Algorithm~\ref{alg:step}).
 
 \begin{proposition}[Pre-silent updates are exactly invisible]\label{prop:pre}
 Fix $X$ and let $\widehat W^\ell=W^\ell+\Delta^\ell$ with $\Delta^\ell_{ij}=0$ whenever
@@ -232,42 +239,43 @@ If $s^\ell_i=1$ in \eqref{eq:forward}, $a^\ell_{i,b}=0$ for every sample and
 Proposition~\ref{prop:post} holds with no margin condition.
 \end{corollary}
 Proofs are in Appendix~\ref{app:proofs}. The default system does not enforce the margin, so we
-measured it: re-inferring every waking batch after each of its $18{,}760$ isolated replay
-updates on the record configuration, the update altered the top hidden code of $0.36\%$ of
-waking samples per step and changed a waking prediction for $0.27\%$ (almost all through the
-plastic readout: $0.001\%$ with the readout isolated), violating the margin for
-$\sim\!10^{-4}$ of asleep units per step. Isolation is exact for silent-presynaptic and
-suppressed units and near-exact elsewhere; Corollary~\ref{cor:refr} is why rotation makes it
-robust.
+measured it over all $18{,}760$ isolated replay updates of the record run: the update altered
+the top hidden code of $0.36\%$ of waking samples and a waking prediction for $0.27\%$ (almost all through the plastic readout;
+$0.001\%$ with it isolated), violating the margin for $\sim\!10^{-4}$ of asleep units per
+step --- exact for silent-presynaptic and suppressed units, near-exact elsewhere, and
+Corollary~\ref{cor:refr} is why rotation makes it robust.
 
 \paragraph{Refractory rotation.} After batch $X_t$, set
 $s^\ell_i(t{+}1)=\mathbf{1}[i\in\mathcal{A}^\ell(X_t)]$: every unit that fired sits out the
 next competition and is therefore asleep --- consolidable, and exactly so --- for $X_{t+1}$.
-Rotation widens the isolated channel $\rho_\ell$ (the fraction of replay-activated units that
-are asleep for the current input) from $0.2$--$0.3$ to $\approx0.53$, at the price of running
+Rotation widens the isolated channel
+$\rho_\ell=|\tilde{\mathcal{A}}^\ell\setminus\mathcal{A}^\ell(X)|/|\tilde{\mathcal{A}}^\ell|$ --- the fraction
+of the units $\tilde{\mathcal{A}}^\ell$ activated by the replay micro-batch that are asleep for the
+current input --- from $0.2$--$0.3$ to $\approx0.53$, at the price of running
 inference on the second-best coalition.
 
 \paragraph{Internal control (Figure~\ref{fig:mech}b).} \emph{When to replay:} each unit
-integrates its own use, $S_i\leftarrow S_i+\bar a_i(x_t)$ --- a unit-level analogue inspired by
-the homeostatic Process~S of sleep regulation \citep{borbely1982} --- and a burst of $n_b$
-replay micro-batches fires when the mean pressure of currently asleep units exceeds $\theta$;
-consolidation discharges the pressure of the units that received it. \emph{When to rotate:} with
-fast and slow exponential averages of the batch error, $\bar e_f$ ($\alpha_f{=}0.1$) and
+integrates its own use, $S_i\leftarrow S_i+\bar a_i(X_t)$ with $\bar a_i(X_t)$ the fraction of the
+batch's samples on which it fired --- a unit-level Process~S \citep{borbely1982} --- and a
+burst of $n_b$ replay micro-batches
+fires when the mean pressure over the currently asleep units of all hidden layers exceeds
+$\theta$; consolidation resets the pressure of the units that received it ($S_i\leftarrow0$).
+\emph{When to rotate:}
+with fast and slow exponential averages of the batch-mean squared output error $e_t$, $\bar e_f$ ($\alpha_f{=}0.1$) and
 $\bar e_s$ ($\alpha_s{=}0.002$), rotation runs while $\bar e_f\ge\beta\,\bar e_s$
 ($\beta\approx1.1$--$1.5$) or while $\bar e_f\ge\gamma e_0$ with $e_0$ the chance-level error
 of the first $20$ batches ($\gamma\approx0.5$): the stream is new relative to the learner's own
 recent history, or is not yet mastered. The detector is a standard drift monitor
 \citep{ross2012}, loosely inspired by cholinergic novelty signalling \citep{hasselmo2006}; what
-is new is what it gates; a single absolute threshold cannot serve across the regimes
-considered here, since the converged error of a ten-class i.i.d.\ stream exceeds any level a
-two-class task dips under. At the activity
-fraction used throughout the gate turns out to be nearly neutral, and the default system runs
-rotation always on (Section~\ref{sec:results}).
+is new is what it gates, and a single absolute threshold cannot serve across the regimes
+considered here (a converged ten-class i.i.d.\ error exceeds any level a two-class task dips
+under). At the activity fraction used throughout the gate is nearly neutral, and the default
+system runs rotation always on (Section~\ref{sec:results}).
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[
-  scale=0.9, transform shape,
+  scale=0.83, transform shape,
   font=\scriptsize, >=Latex,
   unit/.style={circle, draw=black!70, minimum size=8.5pt, inner sep=0pt},
   awake/.style={unit, fill=blue!55},
@@ -316,7 +324,9 @@ rotation always on (Section~\ref{sec:results}).
 written only into hidden synapses invisible to the current input --- exactly so for silent
 presynaptic and suppressed units; refractory rotation forces recently used units into the
 consolidable set. (b) Unit-level homeostatic pressure triggers replay bursts; a
-relative-novelty gate decides when rotation runs.}
+relative-novelty gate decides when rotation runs. The default system runs rotation always on with one micro-batch per waking batch; the
+pressure trigger and the novelty gate are schedulers for sparse budgets and lower activity
+fractions.}
 \label{fig:mech}
 \end{figure}
 
@@ -328,15 +338,15 @@ Architecture $d$--$512$--$256$--$C$, \kwta{} $10\%$, $30\%$ distance-dependent c
 $80\%$ excitatory units; waking batches of $16$; buffer $K{=}1000$ ($K{=}200$ in
 Appendix~\ref{app:k200}). Baselines: BP with experience replay (BP+ER) at equal $K$; the
 offline ``night'' ($20$ replay batches of $256$ at $3\times$ learning rate after each waking
-epoch, the best-performing offline schedule in our sweep) on its preferred narrower core and
+epoch, the best offline schedule in our sweep) on its preferred narrower core and
 on our substrate; interleaved ER for the local learner; no buffer. Three seeds (six on headline
 rows), mean $\pm$ s.d. Energy is an idealised 45-nm FP32 arithmetic-energy proxy
 \citep{horowitz2014} --- $0.9$\,pJ per FP32 accumulate (one per synaptic event) against
 $4.6$\,pJ per multiply--accumulate --- after rate-to-spike conversion with thresholds calibrated on training
-images \citep{rueckauer2017}; it excludes data movement and membrane updates. Every choice
-made during development used the official test sets; Appendix~\ref{app:val} replicates the
-headline orderings on a held-out tenth of the training data ($\rho=0.97$, mean gap $0.9$).
-Further protocol details are in Appendix~\ref{app:cost}.
+images \citep{rueckauer2017}; it excludes data movement and membrane updates. Every
+development choice used the official test sets; Appendix~\ref{app:val} replicates the headline
+orderings on a held-out tenth of the training data ($\rho=0.97$, mean gap $0.9$); further
+protocol details are in Appendix~\ref{app:cost}.
 
 % ================================================================ 4
 \section{Results}
@@ -347,9 +357,8 @@ sleep with one isolated replay micro-batch beside every waking batch reaches
 $\mathbf{92.7\pm0.3\%}$ (six seeds) with no offline phase --- above the best offline night
 ($90.7\pm0.4\%$ on its preferred narrow substrate; $90.9\pm3.2$, highly variable across seeds,
 on ours) and far above unmasked interleaved ER at the same budget ($89.7\pm1.1$) and BP+ER
-($89.3\pm0.8$). Adding a night on top of continuous local sleep produces no detectable
-improvement ($92.7\pm0.4$): once consolidation runs during wake, the offline phase is
-redundant at this buffer size. The headline configuration replays $2.4\times$ the night's
+($89.3\pm0.8$). A night added on top changes nothing ($92.7\pm0.4$): once consolidation
+runs during wake, the offline phase is redundant at this buffer size. The headline configuration replays $2.4\times$ the night's
 samples; at a matched $1.2\times$ budget the system still reaches $91.7$--$91.8$
 (eight-sample micro-batches every batch, or $16$-sample ones every second batch;
 Figure~\ref{fig:batch}, Appendix~\ref{app:cost}).
@@ -367,8 +376,8 @@ accumulates only where it can do no immediate harm and is averaged over thousand
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=.46\linewidth]{fig_batch.pdf}\hfill
-\includegraphics[width=.46\linewidth]{fig_timing.pdf}
+\includegraphics[width=.44\linewidth]{fig_batch.pdf}\hfill
+\includegraphics[width=.44\linewidth]{fig_timing.pdf}
 \caption{\textbf{Left (isolation):} split-MNIST accuracy against replay batch size: masked
 refractory replay is insensitive down to $8$ samples; unmasked, silent-masked and
 offline-night replay degrade. \textbf{Right (timing):} accuracy against the number of waking
@@ -382,7 +391,7 @@ sequential points ($88.8\pm0.8$: the pre-silent channel alone), removing isolati
 with a $3.7$-fold larger seed deviation ($87.0\pm1.1$), and removing replay everything
 ($19.6$, the forgetting floor). The static column identifies who pays: rotation is the only
 statically costly component, about $1.2$ points at this activity fraction ($94.7$ against
-$95.9$--$96.1$ without it). Three replacements sharpen the construction. \emph{Mirror
+$95.9$--$96.1$ without it). \emph{Mirror
 isolation} --- the classical protected direction with our machinery: waking updates barred
 from synapses that served the last replay batch, replay itself unmasked --- reaches only
 $77.9\pm1.6$: the protected direction is a fifteen-point effect, not a framing choice.
@@ -391,13 +400,14 @@ on both axes ($90.2\pm0.4/86.4\pm0.3$): all-or-none OFF periods beat turned-down
 the biological comparison. \emph{Optimiser state:} masked
 Adam trails heavy-ball SGD ($91.8\pm0.6/94.6\pm0.2$) because the guarantee freezes its moments
 outside each batch's mask, where they go stale across a unit's on/off cycles
-\citep{bricken2023}; letting the moments leak recovers most of the gap but surrenders the
-guarantee ($92.6\pm0.3$), while a single velocity keeps both. Momentum-free SGD is not the
-answer either: without the velocity's noise averaging, isolated micro-batches collapse the
-network to chance unless the replay step is re-scaled by hand, and the best pure-SGD setting
-still trails by $2.8/4.6$ (Appendix~\ref{app:negative}). The velocity is the least state that
-keeps the guarantee and the accuracy at once; a two-sided learning-rate sweep
-(Appendix~\ref{app:eta}) shows these comparisons are plateaus, not knife-edges.
+\citep{bricken2023}; letting the moments leak recovers most of the gap ($92.6\pm0.3$) but
+surrenders the confinement of optimiser state --- the weight change stays masked, yet the
+leaked moments re-enter awake synapses at the next unmasked waking step --- while a single
+velocity keeps both. Momentum-free SGD is no answer either: without the velocity's noise
+averaging, isolated micro-batches collapse the network to chance unless the replay step is
+re-scaled by hand, and its best setting still trails by $2.8/4.6$; the velocity is the least
+state that keeps guarantee and accuracy at once, and a two-sided learning-rate sweep shows
+these comparisons are plateaus, not knife-edges (Appendices~\ref{app:negative}, \ref{app:eta}).
 
 \begin{table}[t]
 \centering\footnotesize
@@ -437,9 +447,9 @@ batches every $128$ retains $87.3\pm0.2$ while an even trickle at the same budge
 ($81.9\pm2.9$) --- masked replay reaches only part of the synapses per event and cannot
 dribble. Unit-level pressure triggering does better still ($89.1\pm1.1$ at a third of the
 events), and surprise triggering fails: the converged error never crosses the threshold, so
-zero replay events fire ($19.0$). Homeostatic triggering consistently outperforms the tested
-surprise trigger during wake --- the opposite of the offline night, whose best trigger in our
-sweeps is novelty-timed.
+zero replay events fire ($19.0$). Homeostatic triggering beats the tested surprise trigger
+during wake, the opposite of the offline night, whose best trigger in our sweeps is
+novelty-timed.
 
 \paragraph{The i.i.d.\ price and the activity fraction.} Rotation's static price is governed
 by the substrate's activity fraction: at $5\%$ it cost $1.3$--$3.0$ points on i.i.d.\ MNIST
@@ -457,8 +467,8 @@ unmasked ER $17.0\pm6.1\approx$ no buffer $16.4$, despite task-active code overl
 $0.9$--$0.98$. On the feature front-end the local ordering persists (refractory $41.5\pm1.1$
 $>$ night $35.0\pm0.5$ $\gg$ unmasked $20.1\pm7.3$) while BP+ER reaches $43.2\pm1.0$ at its
 best learning rate --- a $1.7$-point lead. Transplanting the local network's ingredients into
-the BP net one at a time (each at its better of two learning rates) is consistent with
-activation sparsity accounting for that mean gap: width helps BP+ER ($44.5\pm1.0$), the
+the BP net one at a time (each at its better of two learning rates) attributes that mean gap
+to activation sparsity: width helps BP+ER ($44.5\pm1.0$), the
 $30\%$ distance-dependent wiring costs $1.2$ ($43.3\pm0.9$), and \kwta{} costs the rest
 ($40.5\pm0.7$), leaving BP+ER at or below the local learner on the identical substrate. The
 rotation's static effect on raw CIFAR is inconclusive under the available seeds
@@ -468,7 +478,7 @@ rotation's static effect on raw CIFAR is inconclusive under the available seeds
 $93.8\%$ (rate accuracy $94.7\%$) for a proxy of $119$\,nJ per sample against $2461$\,nJ for
 dense rate inference ($20.7\times$) and $526$\,nJ for event-driven rate inference
 ($4.4\times$); accuracy is monotone in $T_s$, whereas the rotation-free control degrades beyond
-$T_s{=}8$ ($94.6\to90.1$ at $T_s{=}32$), consistent with rotation shaping sparser codes.
+$T_s{=}8$ ($94.6\to90.1$ at $T_s{=}32$).
 
 % ================================================================ 5
 \section{Scaling the mechanism: self-referenced decay and depth}
@@ -478,10 +488,10 @@ $T_s{=}8$ ($94.6\to90.1$ at $T_s{=}32$), consistent with rotation shaping sparse
 $\lambda$ tuned once per dataset ($10^{-3}$ on the image benchmarks). Split CIFAR-100 exposes
 what that constant hides: with a hundred classes each class receives a tenth of the
 supervision events while the decay acts on every synapse at every step, so at the MNIST-tuned
-value the hidden weights follow the pure-decay trajectory $(1-\lambda)^t$ exactly, activity
-collapses and the network lands at chance ($2.4\%$ i.i.d.\ against $20$--$23\%$ on a
-ten-class subset of the same images). The class count is a hidden variable every fixed decay
-is silently tuned against. We replace the constant by a per-layer ratio controller,
+value the hidden weights follow the pure-decay trajectory $(1-\lambda)^t$, activity collapses
+and the network lands at chance ($2.4\%$ i.i.d.\ against $20$--$23\%$ on a ten-class subset
+of the same images): the class count is a hidden variable every fixed decay is silently tuned
+against. We replace the constant by a per-layer ratio controller,
 \begin{equation}
 \lambda_\ell=\min\!\Big(\lambda_{\max},\ \rho\,\mathrm{EMA}\big[u^\ell\big]\big/\big(\overline{|W^\ell|}+\epsilon\big)\Big),\qquad \rho=0.25,\ \lambda_{\max}=0.02,
 \label{eq:controller}
@@ -490,13 +500,13 @@ where $u^\ell$ is the mean magnitude of the data-driven, post-optimiser, \emph{p
 waking increment applied to layer $\ell$ (so the decay never feeds its own drive), the EMA
 (coefficient $0.02$) runs over waking unmasked steps only, $\epsilon=10^{-12}$ floors the
 denominator, and $W^\ell$ and $B^{\ell-1}$ share $\lambda_\ell$ so alignment is untouched: the
-decay removes a fixed fraction of what learning currently adds. $\rho$ is the only control
+decay's mean magnitude per step, $\lambda_\ell\overline{|W^\ell|}$, is held at the fraction $\rho$ of the
+mean data-driven update magnitude. $\rho$ is the only control
 target; $\lambda_{\max}$, the EMA coefficient and $\epsilon$ are global safeguards never tuned
 per dataset. Isolation and rotation decide \emph{where} and \emph{when} to consolidate; the
-controller decides \emph{how strongly} to update as the scale changes, by the principle behind
-every control signal in this paper --- novelty as a fast-over-slow error ratio, homeostasis
-as a unit's own use, decay as a drive-over-weight ratio: all referenced to the learner's own
-current state, none absolute.
+controller decides \emph{how strongly}, by the principle behind every control signal here ---
+novelty as a fast-over-slow error ratio, homeostasis as a unit's own use, decay as a
+drive-over-weight ratio: all referenced to the learner's own state, none absolute.
 
 \begin{table}[t]
 \centering\footnotesize
@@ -524,24 +534,24 @@ split CIFAR-100 & $1.4\pm0.5$ & $1.1\pm0.1$ & $\mathbf{3.4\pm0.6}$ & $\mathbf{3.
 \paragraph{One ratio target, every dataset (Table~\ref{tab:controller}).} With the same $\rho$
 on every dataset the controller concedes $1$--$3$ sequential points to the per-dataset tuned
 value and wins on every static axis by $0.5$--$3.6$ --- the fixed decay had under-regularised
-every thick-signal regime --- with $96.1\pm0.2$ the best i.i.d.\ accuracy of the two-layer
-substrate under any configuration we tested --- a margin that did not replicate cleanly on
-the held-out split (Appendix~\ref{app:val}) and that we therefore treat as provisional. On CIFAR-100 it lifts the system $2.6$--$5\times$ over the
-manual rescue with no dataset-specific decay coefficient. The realised $\lambda_\ell$
+every thick-signal regime --- with $96.1\pm0.2$ the best i.i.d.\ accuracy we have seen from the
+two-layer substrate, a margin that did not replicate cleanly on the held-out split
+(Appendix~\ref{app:val}) and is therefore provisional. On CIFAR-100 it lifts the system
+$2.6$--$5\times$ over the manual rescue with no dataset-specific decay coefficient. The realised $\lambda_\ell$
 self-differentiates as the tuning history would predict ($\sim\!10^{-5}$ on MNIST sequential
 streams, $\sim\!10^{-4}$ on static ones, up to $3\times10^{-3}$ on raw CIFAR): the
 per-dataset ladder was a signal-to-decay ratio in disguise. The controller must see only
-unamplified waking updates, and it does not subsume $\lambda$'s role as a capacity regulariser
-on small tabular problems (Appendix~\ref{app:controller}).
+unamplified waking updates and does not subsume $\lambda$'s capacity-regulariser role on small
+tabular problems (Appendix~\ref{app:controller}).
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{fig_depth.pdf}
+\includegraphics[width=.88\linewidth]{fig_depth.pdf}
 \caption{\textbf{Depth is the same starvation on another axis, and two mechanisms cross it.}
 Sequential (left) and static (middle) accuracy against hidden depth (three seeds): the tested
 fixed decay collapses, the controller degrades gracefully, and controller $+$ locally learned
-skip synapses return the five-layer stack to the two-layer record; BP+ER is depth-insensitive
-but forgets $2$--$3\times$ more. Right: the controller's realised per-layer decay.}
+skip synapses return the five-layer stack to the two-layer record. Right: the controller's
+realised per-layer decay.}
 \label{fig:depth}
 \end{figure}
 
@@ -552,33 +562,30 @@ under the controller every cell stays alive ($90.6\to90.0\to87.6$ sequential,
 $95.6\to95.3\to91.8$ static). The residual toll is architectural: ResNet-style skip synapses
 --- $S^\ell$ carrying $a^{\ell-2}$ into each deep hidden layer, learned by the same local
 product with a Kolen--Pollack feedback twin and the shared decay, replay-masked under the same
-pre-or-post-asleep rule --- restore the thick error path, and the five-hidden-layer system
+pre-or-post-asleep rule (Appendix~\ref{app:alg}) --- restore the thick error path, and the five-hidden-layer system
 returns to the two-layer record on both axes ($91.5\pm0.4/96.2\pm0.3$; $96.3\pm0.2$ static at
-depth four). The bypass alone also rescues the fixed decay ($91.3/93.6$ at depth five), consistent with
-error-path attenuation being a principal contributor to the collapse; the controller adds its
-static margin on top.
+depth four). The bypass alone also rescues the fixed decay ($91.3/93.6$ at depth five),
+consistent with error-path attenuation as a principal cause of the collapse; the controller
+adds its static margin on top.
 BP+ER at the same widths is depth-insensitive ($\approx\!88$--$89$) but forgets $2$--$3\times$
 more ($F\approx13$--$14$ vs.\ $5$--$7$); the local system with skips and the controller beats
-it at every depth tested. The two starvations are not interchangeable: on CIFAR-100 depth is a
-net loss that skips only half refund, while width pays (Appendix~\ref{app:controller}).
+it at every depth tested. On CIFAR-100, by contrast, depth is a net loss that skips only half
+refund, while width pays (Appendix~\ref{app:controller}).
 
 % ================================================================ 6
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{What this offers agents.} The construction is a recipe rather than a benchmark
-result: if an agent's representation is sparse enough that a batch leaves most units silent,
+\paragraph{What this offers agents.} The construction is a recipe: if an agent's representation is sparse enough that a batch leaves most units silent,
 and its learning rule yields a local error signal, consolidation can run in the silent degrees
 of freedom \emph{while the agent acts} --- with an exactness guarantee on the computation in
-use, a homeostatic trigger that needs no task boundaries, and a replay budget an online system
-can afford. The study also says where the recipe breaks: unmasked optimiser state voids the
-guarantee, offline rehearsal and momentum-free updates lose the variance averaging isolated
-micro-batches need, and a fixed synaptic decay is a hidden per-dataset constant that depth
-and class count both expose. We treat the biology as motivating analogy, not
+use, a boundary-free homeostatic trigger and an affordable replay budget. The study also says where the recipe breaks: unmasked optimiser state,
+momentum-free updates, and a fixed synaptic decay that depth and class count both expose as a
+hidden per-dataset constant. We treat the biology as motivating analogy, not
 mechanistic equivalence: the refractory rule mirrors the finding of \citet{driessen2026} that
-ON/OFF alternation, not tonic reduction, discharges local sleep pressure --- our soft-rotation
-control, a tonic reduction, is reliably worse --- and the dissociation of triggers (homeostatic
-during wake, novelty-timed for offline rehearsal) is a testable prediction.
+ON/OFF alternation, not tonic reduction, discharges local sleep pressure (our tonic control is
+reliably worse), and the dissociation of triggers (homeostatic during wake, novelty-timed for
+offline rehearsal) is a testable prediction.
 
 \paragraph{Limitations.} All results are at MLP scale on MNIST/CIFAR variants with three to
 six seeds; every configuration choice during development was made on the official test sets,
@@ -586,11 +593,11 @@ and Appendix~\ref{app:val} replicates the headline MNIST orderings on a single h
 (mean gap $0.9$ points). BP+ER keeps a $1.7$-point lead on feature-based CIFAR-10, attributed
 by the tested decomposition to dense activation; rotation keeps a static price of about a point
 that no tested gate removes without a sequential cost; CIFAR-100 is floor-regime for every
-method; the energy figure is an arithmetic proxy. The primitives all have ancestors; the
-contribution is their combination, with an exactness argument and a measured boundary. Within
-these limits the conclusion stands: consolidation does not require an offline phase --- the
+method; the energy figure is an arithmetic proxy. The primitives have ancestors; the
+contribution is their combination, an exactness argument and a measured boundary. Within these
+limits the conclusion stands: consolidation does not require an offline phase --- the
 learner consolidates while it infers, above the strongest offline-rehearsal schedule at
-$2.4\times$ its replay samples and within a point of it at a matched budget. Code will be
+$2.4\times$ its replay samples and within a point of it at a matched budget; code will be
 released.
 
 \clearpage
@@ -697,11 +704,89 @@ output layer whenever the readout row satisfies the same condition.
 \begin{proof}[Proof of Proposition~\ref{prop:post}]
 A unit outside $\mathcal{A}^\ell(X)$ contributes $a^\ell_{i,b}=0$ on every sample. After the
 update its pre-activation on sample $b$ is $z^\ell_{i,b}+\delta_{i,b}$; under the stated
-margin it is still excluded by $\Phi_k$ (or rectified to zero), so $a^\ell_{i,b}=0$ still,
-every other unit's input is untouched by the argument of Proposition~\ref{prop:pre}, and the
-layer's activities are identical. The readout row is excluded from both propositions in the
+margin it is still excluded by $\Phi_k$ (or rectified to zero), so $a^\ell_{i,b}=0$ still. The
+sample's original winners keep their pre-activations --- their synapses from active
+presynaptic units lie outside $\Delta^\ell$ by the mask, and their silent-presynaptic terms
+vanish as in Proposition~\ref{prop:pre} --- so the same $k$ units win with the same values,
+every other unit's input is untouched, and the layer's activities are identical. When fewer
+than $k$ units are positive on sample $b$, $\tau^\ell_{k,b}=0$ and the condition reads
+$\sigma(z^\ell_{i,b}+\delta_{i,b})=0$: a zero-valued entry carries no activity whether or not
+$\Phi_k$ selects it. The readout row is excluded from both propositions in the
 default system because it is deliberately kept plastic.
 \end{proof}
+
+\section{One training step, the three channels and the skip path}
+\label{app:alg}
+Algorithm~\ref{alg:step} lists one waking step of the default system with the state each
+quantity is read from. Two conventions matter for the guarantees. First, the awake sets are
+read from the waking forward pass, i.e.\ from the weights before the unmasked waking update,
+while the masked replay step acts on the updated weights;
+Propositions~\ref{prop:pre}--\ref{prop:post} hold verbatim for a mask computed on the weights
+being updated, and the drift reported in Section~\ref{sec:method} is measured under the
+implemented order. Second, the replay micro-batch is inferred with the suppression removed,
+so a refractory unit may fire on replay and receive the update (Corollary~\ref{cor:refr}
+makes that update invisible to the waking batch for any magnitude), and a burst of $n_b$
+micro-batches reuses the mask of its waking batch. The waking step is $\eta_w=\eta\,m/256$
+for a waking batch of $m$ samples (the per-epoch drift of a batch-$256$ protocol), the replay
+step $\eta_r=3\eta$ per micro-batch, with $\eta=0.02$ throughout.
+
+\begin{algorithm}[h]
+\caption{One waking step of the default system (rotation always on, one burst per batch).}
+\label{alg:step}
+\begin{algorithmic}[1]
+\REQUIRE weights $W_t$, velocities $v_t$, suppression $s(t)$, buffer $\mathcal{M}$, pressures $S$
+\STATE $a\leftarrow\mathrm{forward}(X_t;\,W_t,\,s(t))$,\ \ $\varepsilon\leftarrow\mathrm{sweep}(a,y_t)$ \hfill Eqs.~\eqref{eq:forward}--\eqref{eq:sweep}
+\STATE $(W,v)\leftarrow$ unmasked heavy-ball step on $(W_t,v_t)$ with $G^\ell=\varepsilon^\ell(a^{\ell-1})^{\!\top}$, rate $\eta_w$ \hfill wake update
+\STATE $\mathcal{A}^\ell\leftarrow\{i:\exists b,\ a^\ell_{i,b}\neq0\}$ for every hidden layer;\ \ $S_i\leftarrow S_i+\bar a_i(X_t)$ \hfill from the pre-update $a$
+\STATE $M^\ell\leftarrow$ Eq.~\eqref{eq:mask}, unit mask $\mathbf{1}[i\notin\mathcal{A}^\ell]$, readout row and bias unmasked
+\STATE $s^\ell_i(t{+}1)\leftarrow\mathbf{1}[i\in\mathcal{A}^\ell]$ \hfill refractory rotation
+\STATE write $(X_t,y_t)$ into $\mathcal{M}$ (reservoir)
+\FOR{each of the $n_b$ replay micro-batches $(X_r,y_r)\sim\mathcal{M}$}
+\STATE $a_r\leftarrow\mathrm{forward}(X_r;\,W,\,s{=}0)$,\ \ $\varepsilon_r\leftarrow\mathrm{sweep}(a_r,y_r)$ \hfill suppression removed
+\STATE $(W,v)\leftarrow$ masked step, Eq.~\eqref{eq:maskedstep}, with $G^\ell=\varepsilon^\ell_r(a^{\ell-1}_r)^{\!\top}$, rate $\eta_r$, masks $M^\ell$
+\ENDFOR
+\STATE $S_i\leftarrow0$ for every $i\notin\mathcal{A}^\ell$ if a burst ran \hfill discharge
+\RETURN $W_{t+1}=W$,\ $v_{t+1}=v$,\ $s(t{+}1)$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{The three channels.} Table~\ref{tab:channels} lists the three ways a synapse
+enters the mask \eqref{eq:mask} and what each guarantees; the rotation of
+Section~\ref{sec:method} exists to move synapses from the second row into the third.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{llll}
+\toprule
+Channel & Condition & Invisible to $X$ & Source \\
+\midrule
+presynaptic silent & $j\notin\mathcal{A}^{\ell-1}(X)$ & for any magnitude & Prop.~\ref{prop:pre} \\
+postsynaptic naturally asleep, active pre & $i\notin\mathcal{A}^{\ell}(X)$, $s^\ell_i=0$ & under the margin $\tau^\ell_{k,b}$ & Prop.~\ref{prop:post} \\
+postsynaptic suppressed & $s^\ell_i=1$ & for any magnitude & Cor.~\ref{cor:refr} \\
+\bottomrule
+\end{tabular}
+\caption{\textbf{The three consolidation channels} opened by the synapse mask.}
+\label{tab:channels}
+\end{table}
+
+\paragraph{A numerical example.} On one sample with $k=2$ and $\sigma(z)=(3,2,0.5,0)$, units
+$3$ and $4$ are asleep and $\tau_k=2$. Any replay update with $\sigma(z_3+\delta_3)<2$ and
+$\sigma(z_4+\delta_4)<2$ leaves the activity vector $(3,2,0,0)$ unchanged, because the two
+winners' own inputs are not touched; if unit $4$ is refractory ($s_4=1$) its bound is void and
+$\delta_4$ may be arbitrarily large; and every synapse leaving unit $4$ into the next layer may
+move by any amount, since its presynaptic activity is zero.
+
+\paragraph{Skip synapses.} For $\ell\ge3$ each deep hidden layer receives a bypass,
+$z^\ell=W^\ell a^{\ell-1}+S^\ell a^{\ell-2}+b^\ell$, with $S^\ell$ under the same Dale
+projection and a feedback twin $B_S^{\ell}\in\mathbb{R}^{n_{\ell+2}\times n_\ell}$ that carries the
+bypass target's burst back to its source,
+\[
+\varepsilon^{\ell}\leftarrow\varepsilon^{\ell}+\sigma'(z^{\ell})\odot\Big((B_S^{\ell})^{\!\top}\big[\kappa\tanh(\varepsilon^{\ell+2}/\kappa)\odot\mathbf{1}(a^{\ell+2}>0)\big]\Big),
+\]
+$S^\ell$ and $B_S^{\ell-2}$ learned by the local product of the main text with the target
+layer's decay $\lambda_\ell$, and replay-masked by the same rule two layers apart,
+$M^{\ell}_{S,ij}=\mathbf{1}[\,j\notin\mathcal{A}^{\ell-2}(X)\ \lor\ i\notin\mathcal{A}^{\ell}(X)\,]$,
+so that Propositions~\ref{prop:pre}--\ref{prop:post} extend unchanged.
 
 \section{The price of the substrate}
 \label{app:substrate}
@@ -919,7 +1004,8 @@ Table~\ref{tab:ablation} is made at each optimiser's best rate.
 
 \section{Momentum, exactness and other negative results}
 \label{app:negative}
-\paragraph{Momentum.} With momentum zero the default replay step ($3\times$ the waking rate)
+\paragraph{Momentum.} With momentum zero the default replay step ($3\eta$ per micro-batch against the
+batch-scaled waking step $\eta\,m/256$, Appendix~\ref{app:alg})
 diverges or starves hidden activity at every learning rate tested ($\eta\in[0.02,0.4]$:
 $\approx10\%$, hidden dimensionality $0$); the waking path alone learns normally at the matched
 effective step, so the collapse is the replay path's: the velocity's $\sim\!10\times$
@@ -929,7 +1015,12 @@ replay gain ($\eta{=}0.2$, gain $0.3$) makes pure SGD viable at $89.9\pm0.3/90.1
 \paragraph{Exactness measurement.} Under the $5\%$ Adam-era configuration the isolated update
 altered the top hidden code of $1.0\%$ of waking samples per step (against $0.36\%$ for the
 record configuration); the numbers in Section~\ref{sec:method} are population rates over every
-replay step of a full run.
+replay step of a full run. They are taken under the implemented order of Algorithm~\ref{alg:step},
+in which the awake sets come from the activities before the waking update; re-inferring
+the batch after that update and masking on the post-update awake sets lowers the hidden-code
+rate to $0.30\%$ ($0.17\%$ with the readout isolated) and leaves the prediction rate
+($0.30\%$; $0.000\%$ isolated), the margin-violation rate and the accuracy unchanged
+($92.2$ vs.\ $92.0$, one seed): the residual drift is the unenforced margin, not the ordering.
 \paragraph{Falsified under matched budgets.} A frozen dentate-gyrus-style sparse expansion
 front-end (input decorrelation does not propagate through learned \kwta{} layers: input task
 overlap drops $0.79\to0.18$ yet every downstream metric worsens by $3$--$11$ points);
