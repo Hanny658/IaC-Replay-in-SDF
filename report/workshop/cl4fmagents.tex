@@ -592,9 +592,11 @@ representation is sparse enough that a batch leaves most units silent, and its l
 yields a local error signal, consolidation can run in the silent degrees of freedom between
 the steps of the stream, with no separate offline phase, under a conditional guarantee on
 the computation in use, and at a higher total compute ($6\times$ the night's wall-clock,
-unoptimised). The invariance closes the channel through which consolidation would perturb
-the units in use. Its accuracy value is $2.6$ points without rotation and $0.1$--$0.3$ with
-it (Table~\ref{tab:ablation}), so isolation's contribution is the guarantee and, at
+unoptimised). Both prerequisites can be checked on a given architecture: top-$k$ routed
+mixture-of-experts layers already expose, per token, the experts a batch leaves silent, so the
+sparse-support condition holds there by construction, and the local error signal is what such
+a system would still have to supply. Isolation's accuracy value is $0.1$--$0.3$ points with
+rotation ($2.6$ without, Table~\ref{tab:ablation}); its contribution is the guarantee and, at
 two-sample batches, the absence of the severe failures the unmasked control showed in half
 the seeds. We treat the biology as analogy, not as mechanistic equivalence; the refractory
 rule mirrors the ON/OFF finding of \citet{driessen2026}, and the trigger dissociation is a

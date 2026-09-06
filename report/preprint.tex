@@ -1088,6 +1088,16 @@ per step in measurement (Propositions~\ref{prop:pre}--\ref{prop:post} and the Re
 offline night has neither protection: with nothing clamping the network, a small noisy batch
 at $3\times$ learning rate moves the whole weight state.
 
+\paragraph{Prerequisites beyond this substrate.}
+The construction is a recipe with two checkable prerequisites. If a system's representation
+is sparse enough that a batch leaves most units silent, and its learning rule yields a local
+error signal, consolidation can run in the silent degrees of freedom between the steps of
+the stream, with no separate offline phase, under a conditional guarantee on the computation
+in use, and at a higher total compute ($6\times$ the night's wall-clock, unoptimised). Top-$k$
+routed mixture-of-experts layers already expose, per token, the experts a batch leaves
+silent, so the sparse-support condition holds there by construction; the local error signal
+is what such a system would still have to supply.
+
 \paragraph{Correspondence with biology.}
 We treat the biology as a motivating analogy, not as a claim of mechanistic equivalence. The
 refractory rule mirrors the causal finding of \citet{driessen2026} that ON/OFF

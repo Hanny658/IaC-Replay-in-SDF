@@ -641,6 +641,15 @@ preprint 摘要部件顺序改为 isolation → rotation → 信号，与 worksh
 shows in half the seeds"，与正文/引言/Limitations 的 "none of / absence of ... in the seeds tested" 一致。
 重编译：workshop 19 页、正文止于第 8 页；preprint 22 页；零错误零 overfull。
 
+### "What this offers agents" 落到具体架构：top-k MoE 例子（2026-09-06 晚）
+
+针对 CL4FMAgents 的 relevance 风险（实验全是 MLP，FM/agents 只在框架里呼应），在 workshop Discussion
+的 "What this offers agents" 段加两句：两个前提可在给定架构上核对——top-k 路由的 MoE 层按 token 天然暴露
+"本 batch 未用的专家"，稀疏支撑条件由构造成立；局部误差信号则是这类系统仍需自行提供的前提。
+同段删掉 "The invariance closes the channel..." 一句并压缩 isolation 数字句，正文仍止于第 8 页（19 页，
+零 overfull）。preprint 无此段，在 Discussion 的 "Why micro-batches work" 与 "Correspondence with biology"
+之间新增 "Prerequisites beyond this substrate." 段，内容同上。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，
