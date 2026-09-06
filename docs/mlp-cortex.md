@@ -629,6 +629,18 @@ Single-pass 段保留。Workshop 为守第 8 页再缩了 Component prices / 控
 `\usepackage{arxiv}`，去掉自带 geometry，`\shorttitle`/`\undertitle`/`\headeright` 设为
 "Preprint"，摘要后加 `\keywords`；23 页（原 11pt 30 页）。作者块仍是匿名占位，上传 arXiv 前需恢复。
 
+### 作者润色 + 摘要措辞软化（2026-09-06 晚）
+
+用户通读两版并润色：去掉破折号、拆长句；术语统一（"record" 配置/基底 → "default"，preprint 小节
+"The sparsity dial" → "The activity fraction"，标签 sec:dial 保留；"Falsified" → "tested and rejected"）；
+两版摘要只留主线数字（91.6、单遍 91.8/88.7/75.1、"about twice"），+2.5/+0.3、1.1×/91.1、rotation-unmasked
+91.5、isolation 0.1–0.3、协议句、preprint 的 5% 门控段与 14 点 mirror 句移出摘要（正文均保留）；
+preprint 摘要部件顺序改为 isolation → rotation → 信号，与 workshop (i)–(iii) 一致；删去三处修复叙事
+（39× 计数产物、cell 冻结 baseline、leak 开发期 +0.8）。
+随后把两版摘要的 "removes a severe failure mode" 软化为 "avoids the severe failures that unmasked replay
+shows in half the seeds"，与正文/引言/Limitations 的 "none of / absence of ... in the seeds tested" 一致。
+重编译：workshop 19 页、正文止于第 8 页；preprint 22 页；零错误零 overfull。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，
