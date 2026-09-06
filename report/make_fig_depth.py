@@ -11,6 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PARTS = os.path.join(os.path.dirname(HERE), "results", "bio", "seq", "parts")
 FIGS = os.path.join(HERE, "figs")
 PREFIX = "val_" if os.environ.get("MLPC_VAL") else ""  # held-out protocol pickles
+plt.rcParams.update({"pdf.fonttype": 42, "ps.fonttype": 42})  # outline (TrueType) fonts, no Type 3
 plt.rcParams.update({"font.size": 9, "axes.titlesize": 9.5, "axes.labelsize": 9, "legend.fontsize": 7.5,
                      "axes.spines.top": False, "axes.spines.right": False})
 C = {"fix": "#b3477a", "kad": "#1f6fb3", "skip": "#2a9d5c", "bp": "#777777"}

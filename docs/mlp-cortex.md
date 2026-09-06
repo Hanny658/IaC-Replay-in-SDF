@@ -679,6 +679,16 @@ Related work 删去与方法重复的 optimiser-state 句、headline 删 local+n
 的 hedge 缩短、depth 括号缩短、sleep 段删一句、per-unit gain 句缩短、exactness 段删 logit 变化句、rotation/isolation
 段删保证复述。正文仍止于第 8 页（19 页）；preprint 23 页；零错误零 overfull。
 
+### 去掉 Type 3 字体（arXiv 要求轮廓字体）（2026-09-06 夜）
+
+`pdffonts` 显示 preprint 18 个、workshop 20 个 Type 3 字体，全部是 matplotlib 图里的 DejaVuSans（9 张图）；
+workshop 另有 1 个 `ectt1000.pk` 位图字体（T1 编码下 `\url` 用的 EC 打字机字体，MiKTeX 没装 cm-super）。
+四个作图脚本（`make_figs.py`、`make_fig_isomargin.py`、`make_fig_appendix.py`、`make_fig_depth.py`）加
+`plt.rcParams.update({"pdf.fonttype": 42, "ps.fonttype": 42})`，用 `MLPC_VAL=1` 全部重生成；对比新旧图的
+数值 token 完全一致（depth/isomargin 只是 Type 3 抽取时的分词差异），仅字体嵌入方式改变。workshop 前言加
+`\renewcommand{\ttdefault}{lmtt}`（Latin Modern 打字机，Type 1）。重编译后两版 Type 3 = 0，页码不变
+（workshop 19 页正文止于第 8 页，preprint 23 页）。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，

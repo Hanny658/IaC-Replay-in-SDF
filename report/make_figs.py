@@ -13,6 +13,7 @@ FIGS = os.path.join(HERE, "figs")
 PREFIX = "val_" if os.environ.get("MLPC_VAL") else ""  # held-out protocol pickles
 os.makedirs(FIGS, exist_ok=True)
 
+plt.rcParams.update({"pdf.fonttype": 42, "ps.fonttype": 42})  # outline (TrueType) fonts, no Type 3
 plt.rcParams.update({"font.size": 8.5, "axes.spines.top": False, "axes.spines.right": False,
                      "figure.dpi": 150, "savefig.bbox": "tight", "axes.grid": True,
                      "grid.alpha": 0.25, "grid.linewidth": 0.4, "legend.frameon": False})
