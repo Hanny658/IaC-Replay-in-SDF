@@ -143,7 +143,9 @@ subnetwork per task from task identity \citep{masse2018}; learned gates \citep{t
 dendritic context \citep{iyer2022}, task-free sparsification \citep{lassig2023} and recovered
 functional masks \citep{mckee2026} derive the gate from the input. Refractory competition has
 classical precedents \citep{kaski1994,maeda1999}, and spiking continual learners raise firing
-thresholds with use \citep{shen2024}. Our rotation differs in purpose: recently active units
+thresholds with use \citep{shen2024} or randomise the top-$k$ selection \citep{shen2026}
+to de-overlap task codes, the wake-side counterpart of our random-alternation control. Our
+rotation differs in purpose: recently active units
 are benched for one competition to enlarge a \emph{replay channel}, not to allocate resources
 across tasks.
 
@@ -595,10 +597,7 @@ the computation in use, and at a higher total compute ($6\times$ the night's wal
 unoptimised). Both prerequisites can be checked on a given architecture: top-$k$ routed
 mixture-of-experts layers already expose, per token, the experts a batch leaves silent, so the
 sparse-support condition holds there by construction, and the local error signal is what such
-a system would still have to supply. Isolation's accuracy value is $0.1$--$0.3$ points with
-rotation ($2.6$ without, Table~\ref{tab:ablation}); its contribution is the guarantee and, at
-two-sample batches, the absence of the severe failures the unmasked control showed in half
-the seeds. We treat the biology as analogy, not as mechanistic equivalence; the refractory
+a system would still have to supply. We treat the biology as analogy, not as mechanistic equivalence; the refractory
 rule mirrors the ON/OFF finding of \citet{driessen2026}, and the trigger dissociation is a
 testable prediction.
 
@@ -685,6 +684,9 @@ $1.1\times$. Code can be found at
 \bibitem[Saper et al.(2005)]{saper2005} Saper, C.B., Scammell, T.E., Lu, J. (2005). Hypothalamic regulation of sleep and circadian rhythms. \emph{Nature}, 437:1257--1263.
 
 \bibitem[Shen et al.(2024)]{shen2024} Shen, J., Ni, W., Xu, Q., Tang, H. (2024). Efficient spiking neural networks with sparse selective activation for continual learning. In \emph{AAAI} 38, pp.\ 611--619.
+
+\bibitem[Shen et al.(2026)]{shen2026} Shen, J., Zhao, L., Xu, Q., Yang, Y., Chen, L., Pan, G., Chen, B. (2026). Robust selective activation with randomized temporal $k$-winner-take-all in spiking neural networks for continual learning. In \emph{ICLR}.
+
 
 \bibitem[Sorrenti et al.(2025)]{sorrenti2024} Sorrenti, A., Bellitto, G., Proietto Salanitri, F., Pennisi, M., Palazzo, S., Spampinato, C. (2025). Wake--sleep consolidated learning. \emph{IEEE Transactions on Neural Networks and Learning Systems}, 36(7):12668--12679.
 

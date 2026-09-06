@@ -650,6 +650,18 @@ shows in half the seeds"，与正文/引言/Limitations 的 "none of / absence o
 零 overfull）。preprint 无此段，在 Discussion 的 "Why micro-batches work" 与 "Correspondence with biology"
 之间新增 "Prerequisites beyond this substrate." 段，内容同上。
 
+### 引用 Shen et al. ICLR 2026（RTK-WTA）（2026-09-06 晚）
+
+用户指出的最近邻工作："Robust Selective Activation with Randomized Temporal K-WTA in SNNs for Continual
+Learning"（OpenReview uAkexWJ7dW，poster）。全文被 OpenReview 人机验证挡住（PDF/forum/API/代理均 403），
+只读到摘要；前作 AAAI 2024 SA-SNN（已引 shen2024）全文读到：class-IL、无任务标签、无 replay、按 spike trace
+逐时间步 top-k 掩码、阈值随使用不可逆上升、+EWC，splitMNIST class-IL 约 77–82%（h=1000，K=10）。ICLR 版把
+确定性 top-k 换成概率 top-k 以减少任务间表示重叠，摘要称比确定性 K-WTA 高 3.07–5.0 点（绝对值未核实）。
+定位：他们的 k-WTA/随机化是唤醒学习中的资源分配（protect-the-past，regularisation 族，无 replay，SNN 基底）；
+我们的 k-WTA 用于暴露不可见突触供推理期 isolated replay，并有精确性保证。需承认的重叠："扰动确定性赢家集合
+有利于 CL"——我们的随机交替对照恢复 rotation 大部分收益，使用依赖只多 0.6/2.0。novelty（isolation、推理期
+巩固、触发、控制器）不受影响。两版 Related work 的 gating 段各加一句引用 shen2026 并加 bibitem。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，
