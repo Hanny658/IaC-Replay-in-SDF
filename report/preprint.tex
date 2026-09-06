@@ -50,8 +50,8 @@ units that have just fired sit out the next competition, which widens the set of
 synapses. Two internal signals, a unit-level homeostatic pressure and a relative-novelty gate,
 decide when replay bursts fire and when rotation runs. This inverts the usual direction of
 non-interfering continual learning: rather than protecting past tasks while learning the
-present one, the hidden computation on the current input is held invariant (exactly for
-silent and suppressed units, and for all but $0.3\%$ of waking samples per update elsewhere)
+present one, the hidden computation on the current input is held invariant (exactly for silent and suppressed units when the mask matches the weights being updated, and for
+all but $0.3\%$ of waking samples per update in the implemented form)
 while past memories are written into the degrees of freedom the current batch leaves unused.
 On class-incremental split-MNIST the system reaches $91.6\pm0.3\%$ with no offline phase, at
 or above the best offline-night schedule on two held-out splits and consistently above
@@ -180,9 +180,9 @@ Cerebellum-, mushroom-body- and dentate-gyrus-style sparse expansions
 \paragraph{Biology of local sleep.}
 Sleep-like off-periods occur locally in awake, sleep-deprived animals \citep{vyazovskiy2011}.
 Causal evidence is recent: optogenetically inducing ON/OFF alternation in one cortical hemisphere
-of awake mice locally discharges sleep pressure, weakens synaptic markers (GluA1, pS845) and
-rescues memory consolidation under sleep deprivation, whereas an equal \emph{tonic} reduction of
-firing does not \citep{driessen2026}. Our refractory rotation is the algorithmic counterpart of
+of awake mice locally discharges sleep pressure and weakens synaptic markers (GluA1, pS845),
+bilateral induction during sleep deprivation rescues memory consolidation, and an equal
+\emph{tonic} reduction of firing does not discharge the pressure \citep{driessen2026}. Our refractory rotation is the algorithmic counterpart of
 this alternation requirement, and our soft-rotation control (a reduction of gain rather than
 an off-period) the counterpart of tonic reduction.
 
@@ -278,8 +278,10 @@ $\lambda$ (Kolen--Pollack alignment \citep{kolen1994,akrout2019}),
 \Delta B^{\ell-1} \propto \varepsilon^\ell (a^{\ell-1})^{\!\top} - \lambda B^{\ell-1},
 \label{eq:kp}
 \end{equation}
-with sign-concordant feedback under Dale's law and per-synapse adaptive scaling
-($\epsilon$-floored Adam). Equations~\eqref{eq:forward}--\eqref{eq:kp} were fixed by earlier
+with sign-concordant feedback under Dale's law. The default optimiser is heavy-ball SGD
+($\mu=0.9$, one per-synapse velocity, no second-moment state); the $\epsilon$-floored masked
+Adam of the earlier $5\%$ phases appears as a control (Section~\ref{sec:direction}) and in the
+appendices. Equations~\eqref{eq:forward}--\eqref{eq:kp} were fixed by earlier
 ablation ladders and are not varied here, with one exception: Section~\ref{sec:controller}
 replaces the constant $\lambda$ by an adaptive per-layer controller.
 
@@ -316,7 +318,9 @@ forward pass on $X$ under the current suppression, unmasked waking update, awake
 from that forward pass, masked replay update on the updated weights
 (Algorithm~\ref{alg:step}, Appendix~\ref{app:alg}). The replay micro-batch is inferred with
 the suppression removed, so a refractory unit may fire on replay and learn from it, and a
-burst of several micro-batches reuses the mask of its waking batch.
+burst of several micro-batches reuses the mask of its waking batch. Throughout, ``during inference'' means between the steps of the stream: the three operations run
+in sequence within each step, and we claim nothing about asynchronous execution or serving
+latency.
 
 \begin{proposition}[Pre-silent updates are exactly invisible]
 \label{prop:pre}
@@ -363,6 +367,10 @@ $\Phi_k$ selects it.
 If $i$ is suppressed by the rotation mask ($s^\ell_i=1$ in \eqref{eq:forward}), then
 $a^\ell_{i,b}=0$ for every sample and Proposition~\ref{prop:post} holds with no margin condition.
 \end{corollary}
+The propositions take the mask and the weights it protects from the same state. In the
+implemented order the awake sets precede the waking update, so they hold exactly for the
+pre-update weights; the one-step lag is part of the measured drift below and accounts for
+$0.02$ of its $0.32$ hidden-code points.
 
 \begin{remark}[How exact, measured]
 The default system keeps the readout plastic and does not enforce the margin of
@@ -907,7 +915,7 @@ point (Section~\ref{sec:controller}) is dominated on this split.}
 \includegraphics[width=.48\linewidth]{figs/fig_pareto.pdf}
 \caption{\textbf{Left:} the substrate decomposition on feature CIFAR-10, transplanting the
 local network's ingredients into BP+ER one at a time (each cell at its better of two learning
-rates; six seeds except the local learner, three). \textbf{Right:} spiking inference,
+rates; three seeds). \textbf{Right:} spiking inference,
 i.i.d.\ MNIST accuracy against the idealised 45-nm FP32 arithmetic-energy proxy for
 $T_s\in\{4,8,16,32\}$, with the dense (square) and event-driven (diamond) rate references;
 held-out split; the default is monotone in $T_s$, the rotation-free control dips $0.4$ at
@@ -1027,8 +1035,9 @@ $\lambda_\ell$, logged throughout, differentiates exactly as the tuning history 
 predict: $\sim\!10^{-5}$ on MNIST sequential streams, $\sim\!10^{-4}$ on static ones, up to
 $3\times10^{-3}$ on raw CIFAR, and layer-graded within each net. The per-dataset $\lambda$
 ladder was therefore a signal-to-decay ratio in disguise. On the operating frontier
-(Figure~\ref{fig:frontier}) the controller point sits on the static side; the tuned fixed
-decay remains the best sequential-axis setting.
+(Figure~\ref{fig:frontier}) the controller point is dominated by the default on the first split
+($90.6/93.5$ against $91.6/94.1$): on MNIST the tuned fixed decay remains the better setting on
+both axes, and the controller's value lies on harder inputs and at depth.
 
 \paragraph{Depth is the same boundary, and two mechanisms cross it.}
 The class count thins the error signal per class; depth attenuates it per layer. This is the
@@ -1095,10 +1104,10 @@ The construction is a recipe with two checkable prerequisites. If a system's rep
 is sparse enough that a batch leaves most units silent, and its learning rule yields a local
 error signal, consolidation can run in the silent degrees of freedom between the steps of
 the stream, with no separate offline phase, under a conditional guarantee on the computation
-in use, and at a higher total compute ($6\times$ the night's wall-clock, unoptimised). Top-$k$
-routed mixture-of-experts layers already expose, per token, the experts a batch leaves
-silent, so the sparse-support condition holds there by construction; the local error signal
-is what such a system would still have to supply.
+in use, and at a higher total compute ($6\times$ the night's wall-clock, unoptimised). Both prerequisites can be checked on a given architecture. Top-$k$ routed mixture-of-experts
+layers expose, per token, the experts a token leaves silent, but whether the routes of a whole
+batch leave enough experts idle is a measurement (load balancing pushes against it), and the
+local error signal is what such a system would still have to supply.
 
 \paragraph{Correspondence with biology.}
 We treat the biology as a motivating analogy, not as a claim of mechanistic equivalence. The
@@ -1424,8 +1433,8 @@ where the least state suffices.
 \label{app:gates}
 Appendices~\ref{app:gates}--\ref{app:probes} report development-phase numbers (official
 test set) from the earlier $5\%$ phases, the small-buffer and down-selection studies and the
-learning-rate sweeps; they were not re-run under the held-out protocol and support mechanism
-orderings only.
+learning-rate sweeps; they were not re-run under the held-out protocol and support mechanism orderings only, except
+where a paragraph is marked held-out (the single-pass streams of Appendix~\ref{app:probes}).
 
 Figure~\ref{fig:rotation}: always-on rotation costs $1.3$--$3.0$ points on i.i.d.\ MNIST
 ($95.0\to92.0$--$93.7$). Gating rotation by \emph{unit-level pressure} only trades the axes
@@ -1588,7 +1597,7 @@ mode (final accuracy below $60\%$: two seeds at chance, one at $58.2$) that the 
 system did not show in six seeds. With the current input's hidden computation held
 invariant, the noisiest replay degraded the system gracefully in every seed tested. Six
 seeds without a severe failure bound its frequency but do not prove the mode absent, and the
-masked system itself destabilises at replay gain $10$ (Appendix~\ref{app:probes}). The
+masked system itself destabilises at replay gain $10$ (Section~\ref{sec:ablation}). The
 paired mean at batch $2$ ($+24$ $[-0.2,+48.5]$) describes the unmasked failures, not a
 margin, and is kept out of the ranges quoted in the main text.
 

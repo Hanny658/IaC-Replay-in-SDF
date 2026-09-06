@@ -662,6 +662,23 @@ Learning"（OpenReview uAkexWJ7dW，poster）。全文被 OpenReview 人机验�
 有利于 CL"——我们的随机交替对照恢复 rotation 大部分收益，使用依赖只多 0.6/2.0。novelty（isolation、推理期
 巩固、触发、控制器）不受影响。两版 Related work 的 gating 段各加一句引用 shen2026 并加 bibitem。
 
+### 上传前小修：九条明确问题（2026-09-06 夜）
+
+按用户给的清单核实后修改（两版同步）：(2) preprint §4.1 优化器改为默认 heavy-ball SGD，ε-floored masked
+Adam 标为早期 5% 阶段与对照；(3) Driessen 2026 区分单侧 ON/OFF 诱导放掉局部睡眠压力与双侧诱导（睡眠剥夺下）
+恢复记忆巩固，tonic 对照只说不放压力；(4) MoE 句改为逐 token 路由只暴露该 token 未用的专家，整个 batch 路由并集
+是否留下足够空闲专家需测量（load balancing 反向作用）；(5) preprint 控制器 "sits on the static side" 改为被默认
+系统支配（90.6/93.5 vs 91.6/94.1）；(6) substrate decomposition 图注 "six seeds except the local learner, three"
+是开发期残留——held-out 下四格全是三种子（val_ pickles 核实），改为 three seeds；(7) preprint 附录 C–G 的
+development 范围声明加 "except where marked held-out（G 的 single-pass）"，H 的 gain-10 引用改指 §sec:ablation；
+(8) 命题旁加一句：命题取 mask 与被保护权重于同一状态；实现中 awake set 先于 waking update，故对更新前权重
+精确成立，一步滞后计入测得漂移（0.32 中的 0.02）；两版摘要的 "exact" 加条件 "when the mask matches the weights
+being updated"；(9) 两版方法段定义 "during inference" ＝ 数据流步骤之间，三步顺序执行，不主张异步或服务延迟。
+(1) 作者块保持匿名（仓库有匿名镜像），arXiv 上传时再填。Workshop 等量删减：引言末句改指 Discussion 的前提段、
+Related work 删去与方法重复的 optimiser-state 句、headline 删 local+night +0.8 句（表中有）、component prices
+的 hedge 缩短、depth 括号缩短、sleep 段删一句、per-unit gain 句缩短、exactness 段删 logit 变化句、rotation/isolation
+段删保证复述。正文仍止于第 8 页（19 页）；preprint 23 页；零错误零 overfull。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，
