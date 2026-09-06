@@ -695,6 +695,17 @@ workshop 另有 1 个 `ectt1000.pk` 位图字体（T1 编码下 `\url` 用的 EC
 与字体无关）。`make_figs.py`：y 轴下限扩到 78.5，legend 改为 lower center 两列，标签去掉 "(batch 16)"（位置已
 说明）。图高不变，两版页码不变。
 
+### arXiv 投稿包 + 仓库匿名策略（2026-09-06 夜）
+
+arXiv 要求提交 TeX 源码。`report/arxiv_bundle/`（已 gitignore）由 tmp 脚本 build_arxiv_bundle.py 从工作副本生成：
+`main.tex`（首行加 pdfoutput=1，作者块为真实作者）、`arxiv.sty`、`figs/` 里用到的 8 张图、`arxiv_bundle.zip`、
+`arxiv_metadata.txt`（标题、作者、压缩到 1,920 字符以内的表单摘要、完整摘要、关键词、建议的 comments/分类/许可）。
+在干净目录解压试编译：23 页、零错误、零 Type 3。
+仓库策略：工作副本的 `preprint.tex` 含真实作者块与 GitHub 链接（IaC-Replay-in-SDF），**不提交**；仓库里提交的是
+匿名变体（匿名作者块 + anonymous.4open.science 链接），因为匿名镜像从 main 刷新、workshop 仍在双盲评审。
+用户本轮其它改动一并提交：preprint 摘要删去末句 "We prove exactness ... release all code"、Limitations 加代码链接；
+workshop 深度图加宽到 0.80 并删去 CIFAR-100 深度句（正文仍止于第 8 页）。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，

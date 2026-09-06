@@ -559,7 +559,7 @@ signal-to-decay ratio in disguise (Appendix~\ref{app:controller}).
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=.56\linewidth]{fig_depth.pdf}
+\includegraphics[width=.80\linewidth]{fig_depth.pdf}
 \caption{\textbf{Depth is the same starvation on another axis, and two mechanisms cross it.}
 Sequential (left) and static (middle) accuracy against hidden depth (three seeds; six at the
 skip system's depth five): the fixed decay without skips collapses, the controller degrades
@@ -578,8 +578,7 @@ the two-layer default's $91.6/94.1$ and the two-layer controller's $90.6/93.5$: 
 sequential points below the default and $1.7$ above it on the static axis. The bypass alone
 also rescues the fixed decay ($90.4/93.5$ at depth five), so error-path attenuation is a
 principal cause of the collapse (the fixed decay was not re-tuned per depth). BP+ER at the same widths is depth-insensitive ($88.9\to87.9$) but
-forgets $2\times$ more. On CIFAR-100, by contrast, depth is a net loss that skips only half
-refund, while width pays (Appendix~\ref{app:controller}).
+forgets $2\times$ more.
 
 % ================================================================ 6
 \section{Discussion}
