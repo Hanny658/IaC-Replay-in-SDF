@@ -145,20 +145,21 @@ def stat6(cfg):
     return 100 * np.mean(accs), 100 * (np.std(accs, ddof=1) if len(accs) > 1 else 0.0)
 
 
-FRONTIER = [  # s10 record substrate: label, seq cfg, static cfg, non-dominated, offset
-    ("always-on", "g16_sgd_refr_s10_w512", "g16_sgd_refr_s10_w512_static", True, (5, -3)),
-    ("bout gate", "g16_sgd_block2048_s10_w512", "g16_sgd_block2048_s10_w512_static", True, (-40, 5)),
-    ("per-batch gate", "g17_sgd_prog05_s10", "static_g17_sgd_prog05_s10", False, (6, -3)),
-    ("silent", "g16_sgd_silent_s10_w512", "g16_sgd_silent_s10_w512_static", False, (-24, -12)),
+FRONTIER = [  # s10 record substrate: label, seq cfg, static cfg, (legacy flag; dominance is computed), label offset
+    ("always-on", "g16_sgd_refr_s10_w512", "g16_sgd_refr_s10_w512_static", True, (14, 22)),
+    ("bout gate", "g16_sgd_block2048_s10_w512", "g16_sgd_block2048_s10_w512_static", True, (-4, 30)),
+    ("per-batch gate", "g17_sgd_prog05_s10", "static_g17_sgd_prog05_s10", False, (6, -12)),
+    ("silent", "g16_sgd_silent_s10_w512", "g16_sgd_silent_s10_w512_static", False, (-30, 6)),
     ("$-$isolation, $-$rotation", "g17_sgd_none_s10", "static_g17_sgd_none_s10", True, (4, 6)),
-    ("$-$isolation", "g26_ctrl_rot_noiso", "g26_ctrl_rot_noiso_static", False, (-50, -27)),
+    ("$-$isolation", "g26_ctrl_rot_noiso", "g26_ctrl_rot_noiso_static", False, (-22, -36)),
     # phase 19: the adaptive decay controller retires silent and the per-batch gate
     ("adaptive $\\lambda$ (grad)", "g19_kad_mnist", "g19_kad_mnist_static", True, (6, -2)),
-    ("adaptive $\\lambda$ (drive)", "g19b_mnist", "g19b_mnist_static", True, (-64, -3)),
-    ("$+$anchor", "g17_sgd_anchor_s10", "static_g17_sgd_anchor_s10", False, (5, -9)),
-    ("masked Adam", "g17_adam_refr_s10", "static_g17_adam_refr_s10", False, (-56, -5)),
-    ("Adam, leak", "g17_adam_leak_s10", "static_g17_adam_leak_s10", False, (5, -3)),
+    ("adaptive $\\lambda$ (drive)", "g19b_mnist", "g19b_mnist_static", True, (-70, -14)),
+    ("$+$anchor", "g17_sgd_anchor_s10", "static_g17_sgd_anchor_s10", False, (18, -30)),
+    ("masked Adam", "g17_adam_refr_s10", "static_g17_adam_refr_s10", False, (-78, 14)),
+    ("Adam, leak", "g17_adam_leak_s10", "static_g17_adam_leak_s10", False, (22, -14)),
 ]
+LEADER = {"always-on", "bout gate", "$-$isolation", "$+$anchor", "masked Adam", "Adam, leak", "per-batch gate", "silent"}
 HIST5 = [  # the historical 5% family (faded)
     ("g12_sgd_refr_w512s5", "static_g12_sgd_refr_w512s5"),
     ("g13_sgd_block2048_w512s5", "static_g13_sgd_block2048_w512s5"),
@@ -174,16 +175,23 @@ for cs, ct in HIST5:
     ax.plot(xm, ym, marker="o", ms=3, color=C["grey"], alpha=0.45, lw=0)
 if not PREFIX:
     ax.annotate("historical $5\%$ family", (89.2, 93.6), fontsize=6.5, color=C["grey"], alpha=0.8)
-front = []
-for name, cs, ct, onf, off in FRONTIER:
+pts = []
+for name, cs, ct, _onf, off in FRONTIER:
     try:
         (xm, xs), (ym, ys) = stat6(cs), stat6(ct)
     except KeyError:
         continue
+    pts.append((name, xm, xs, ym, ys, off))
+front = []
+for name, xm, xs, ym, ys, off in pts:
+    # non-dominated by seed means: no other cell is at least as good on both axes and better on one
+    onf = not any((x2 >= xm and y2 >= ym) and (x2 > xm or y2 > ym) for n2, x2, _, y2, _, _ in pts if n2 != name)
+    print(f"  frontier: {name:28s} {xm:.1f}/{ym:.1f} {'non-dominated' if onf else 'dominated'}")
     ax.errorbar(xm, ym, xerr=xs, yerr=ys, marker="o", ms=4,
                 color=C["refr"] if onf else C["press"], lw=0, elinewidth=0.8, capsize=1.5)
     ax.annotate(name, (xm, ym), textcoords="offset points", xytext=off, fontsize=7,
-                color=C["refr"] if onf else C["press"])
+                color=C["refr"] if onf else C["press"],
+                arrowprops=(dict(arrowstyle="-", color="#999999", lw=0.5, shrinkA=0, shrinkB=2) if name in LEADER else None))
     if onf:
         front.append((xm, ym))
 front.sort()

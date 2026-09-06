@@ -595,6 +595,40 @@ Results 首段加一句（91.8±0.2 vs BP+ER 88.7±0.3、夜间 75.1±3.5，one 
 Single-pass 段保留。Workshop 为守第 8 页再缩了 Component prices / 控制器 / 深度 / CIFAR 迁移几句的措辞，
 图 2 宽 .38、图 3 宽 .64。不加 DER++：截稿前不动新代码。
 
+### 收尾修稿：数据来源声明、成本与 exactness 按新协议重测、图 5、措辞（2026-09-06 上午）
+
+第四轮审稿（`report/critic.md`）七点，用户要求做其中四项，且**不再向审稿人叙述测试集修复过程**：
+1. **数据来源声明统一**：删掉"every reported number ..."的全称断言（与附录 E–H、表 3、附录 I/J 的
+   development-phase 结果直接矛盾）。统一表述：配置在官方测试划分（development set）上选定并冻结；
+   主文比较把训练集分层 10% 从流中移除后重训并在其上评估，该 10% 未参与任何选择；第二个 10%
+   （不同种子，与第一个共享 9%＝563/5999 个样本，不是不相交测试集）复验 headline 行；未按此协议重跑的
+   探索性结果标注 development-phase。附录 L/I 引言与表 5 表头（development set / held-out split 1 /
+   split 2）同步；Spearman 0.97 注明"稳健性检查，不证明选择偏差为零"。不写"曾经在测试集上选参然后修复"
+   的叙事。
+2. **成本按 held-out 运行重算**（流是九成训练集）：更新数 18,760 → **16,885**（cadence 2：8,442；
+   pressure 5,779≈1/3；clocked/cad8 2,096/2,110≈12.5%）；replay 样本 2.7e5，**2.2×** 夜间（原 2.4×）；
+   8-sample 与 cadence-2 方案 1.35e5 ＝ **1.1×**（原 1.22×）；更新次数 **35×**（原 39×）、17.6×（原 19.5×）。
+   Wall-clock 用 seed 100、OMP=1 的单线程干净计时（`val_*_s100.pkl`，只作计时不入表）：默认 8.8 min、
+   unmasked 8.6、夜间 1.4、无 replay 1.0、BP+ER 0.4 → Discussion 的"11×"改 **6×**。
+3. **Exactness 按新协议重测**：`g21_diag_free` ×3 + `g21_diag_isolated` ×1 `--val`（16,885 次更新）：
+   hidden-code 0.33%（0.31–0.35）、prediction 0.32%、readout isolated 0.21%/0.001%、margin ~1e-4、
+   平均最大 logit 变化 0.021——与开发运行几乎相同；正文/Remark 改用新数并注明协议，开发运行
+   （post-wake 顺序检查、CIFAR 0.46%/3.6%、5% Adam 1.0%）保留并标注。
+4. **图 5 Pareto 改为程序计算支配关系**（`make_figs.py`，按种子均值）：非支配＝bout gate 91.8/94.4、
+   silent 88.0/95.3、unmasked 无 rotation 85.4/95.8；默认、adaptive λ、anchor、Adam 均被支配；图注同步
+   （原"adaptive decay extends the static side"错误）。标签加引线。旧结论残留：附录 C "SGD 在
+   consolidation loop 两轴胜过 Adam" → 打平；"两条 gain 曲线都在默认值达峰" → unmasked 在 gain 1–3
+   是平台（85.7/85.4）。
+5. **措辞收紧**："removes a collapse mode" → 在所测种子与配置下没有出现 unmasked 对照在半数种子上的
+   严重失效（操作定义：最终精度 <60%：两个 chance、一个 58.2），六个种子只能给出频率上界；masked 系统
+   在 gain 10 也会失稳。"beats the strongest night" → 两个划分上与所测离线方案有竞争力（第一划分 +2.5、
+   第二 +0.3），对 BP+ER 与 unmasked local ER 两划分都稳定领先；1.1× 预算只在第一划分验证过。
+   **未做**：审稿第 6 点（把"mask 必须与被更新权重状态匹配"的前提提前到方法正文）——工作坊第 8 页已满。
+
+**Preprint 换 arXiv 模板**：`report/arxiv.sty`（kourgeorge/arxiv-style），`\documentclass{article}` +
+`\usepackage{arxiv}`，去掉自带 geometry，`\shorttitle`/`\undertitle`/`\headeright` 设为
+"Preprint"，摘要后加 `\keywords`；23 页（原 11pt 30 页）。作者块仍是匿名占位，上传 arXiv 前需恢复。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，

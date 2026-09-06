@@ -53,15 +53,16 @@ relative-novelty gate). The construction inverts the usual direction of
 non-interfering continual learning: the hidden computation on the current input, under its
 suppression mask, is held invariant --- exactly on the proven channels, and for all but
 $0.3\%$ of waking hidden codes per update elsewhere --- while past memories are consolidated
-through degrees of freedom the current batch leaves unused. On class-incremental split-MNIST the system reaches $91.6\pm0.3\%$ with no offline phase,
-above the best offline-rehearsal schedule ($89.2\pm1.7\%$), at $2.4\times$ its replay samples;
-about $1.22\times$ of that budget, eight-sample micro-batches still reach $91.1\pm0.4\%$; a
+through degrees of freedom the current batch leaves unused. On class-incremental split-MNIST the system reaches $91.6\pm0.3\%$ with no offline phase, at or
+above the best offline-rehearsal schedules on two held-out splits ($+2.5$ and $+0.3$ over the best
+night) and consistently above BP+ER and unmasked local replay, at $2.2\times$ the night's replay
+samples; at $1.1\times$ that budget, eight-sample micro-batches still reach $91.1\pm0.4\%$; a
 single pass over the stream widens the lead ($91.8$ vs.\ $88.7$ BP+ER, $75.1$ night). Rotation
 carries the gain (rotation with unmasked replay reaches $91.5\pm0.3\%$); isolation adds
 $0.1$--$0.3$ points at replay batches of $16$ to $4$ and the guarantee, $2.6$ without rotation,
-and at two-sample batches removes a collapse mode. The
-ordering transfers to split CIFAR-10, and every reported number is measured on held-out training
-data never used for any decision. A
+and at two-sample batches shows none of the severe failures that unmasked replay shows in half the
+seeds. The ordering transfers to split CIFAR-10; main comparisons use frozen configurations on a
+held-out tenth of the training data, exploratory results being labelled. A
 drive-referenced controller for the rule's synaptic decay replaces per-dataset tuning with one
 dataset-independent ratio target and, with locally learned skip synapses, holds a
 five-hidden-layer stack at the two-layer level where the tuned fixed decay without skips
@@ -102,8 +103,8 @@ Under \kwta{} dynamics this leaves the hidden computation exactly invariant for
 silent-presynaptic and suppressed units (Propositions~\ref{prop:pre}--\ref{prop:post}); we
 measure how nearly it holds elsewhere and end to end. With rotation on, replay micro-batches
 of $8$--$16$ samples suffice, where unmasked replay without rotation and offline schedules
-degrade; isolation adds $0.1$--$0.3$ points there ($2.6$ without rotation), the guarantee, and
-at two-sample batches the absence of a collapse mode; replay confined to the readout falls to
+degrade; isolation adds $0.1$--$0.3$ points there ($2.6$ without rotation), the guarantee, and at two-sample batches
+none of the severe failures unmasked replay shows in half the seeds; replay confined to the readout falls to
 $42\%$: hidden-layer replay updates are essential.
 \item \textbf{Refractory rotation.} Units that fired on the current batch sit out the next
 competition. This alternation --- the algorithmic counterpart of the ON/OFF requirement in
@@ -254,10 +255,10 @@ If $s^\ell_i=1$ in \eqref{eq:forward}, $a^\ell_{i,b}=0$ for every sample and
 Proposition~\ref{prop:post} holds with no margin condition.
 \end{corollary}
 Proofs are in Appendix~\ref{app:proofs}. The default system does not enforce the margin, so we
-measured it over all $18{,}760$ isolated replay updates of the record run (three seeds): the
-update altered the top hidden code of $0.32\%$ of waking samples ($0.29$--$0.36$) and a
-waking prediction for $0.33\%$ (almost all through the plastic readout; $0.001\%$ with it
-isolated), violating the margin for $\sim\!10^{-4}$ of asleep units per step, with a mean
+measured it over all $16{,}885$ isolated replay updates of the reported run (held-out protocol,
+three seeds): the update altered the top hidden code of $0.33\%$ of waking samples
+($0.31$--$0.35$) and a waking prediction for $0.32\%$ (almost all through the plastic readout;
+$0.001\%$ with it isolated, one seed), violating the margin for $\sim\!10^{-4}$ of asleep units per step, with a mean
 maximal logit change of $0.02$ ($0.001$ isolated) on the one-hot scale.
 The isolation is exact for silent-presynaptic and suppressed units and near-exact elsewhere
 for the hidden code of the \emph{current} batch under its training-time suppression mask
@@ -360,11 +361,12 @@ Appendix~\ref{app:k200}). Baselines: BP with experience replay (BP+ER) at equal 
 offline ``night'' ($20$ replay batches of $256$ at $3\times$ learning rate after each waking
 epoch, the best offline schedule in our sweep) on its preferred narrower core and
 on our substrate; interleaved ER for the local learner; no buffer. Three seeds (six on headline
-rows), mean $\pm$ s.d. The official test sets served as the development set throughout the
-project; every number reported here is measured on a stratified tenth of the training data
-held out from training and never used for any decision, with the remaining nine tenths as
-the stream (a second, independent tenth replicates the headline rows,
-Appendix~\ref{app:val}). Forgetting $F$ is the mean drop of each earlier task's accuracy from
+rows), mean $\pm$ s.d. Configurations were selected on the official test splits, which served as
+the development set, and then frozen; every main-text comparison re-trains them with a
+stratified tenth of the training data removed from the stream and evaluates on that tenth,
+which took part in no selection (a second tenth, drawn with a different seed and sharing $9\%$
+of its samples with the first, replicates the headline rows, Appendix~\ref{app:val}); results not re-run under it are
+labelled development-phase. Forgetting $F$ is the mean drop of each earlier task's accuracy from
 its own end to the end of training (per-task matrix in Appendix~\ref{app:val}). Evaluation
 runs with the suppression mask off (\kwta{} only), so test order and batch size cannot
 affect it. Energy is an idealised 45-nm FP32 arithmetic proxy \citep{horowitz2014} ($0.9$\,pJ
@@ -386,12 +388,11 @@ BP+ER ($88.8\pm0.3$; $+2.8$ $[+2.5,+3.2]$). In a single pass over the stream (on
 against $88.7\pm0.3$ for BP+ER and $75.1\pm3.5$ for the offline night, whose one night per
 task is too few (Table~\ref{tab:ablation}).
 A night added on top adds $0.8$ ($92.4\pm0.3$). The
-headline configuration replays $2.4\times$ the night's samples; around $1.22\times$ of the
-night's samples ($22\%$ more) the system still reaches $91.1$--$91.2$ (eight-sample
-micro-batches every batch, $39\times$ the night's updates, or $16$-sample ones every second
-batch, $19.5\times$; Figure~\ref{fig:batch}, Appendix~\ref{app:cost}). On a second,
-independent held-out split the ordering holds (rotation $91.8\pm0.4$, BP+ER $88.5\pm0.7$,
-unmasked ER $80.0\pm14.1$, the narrow night $89.3\pm0.6$), with one exception worth stating:
+headline configuration replays $2.2\times$ the night's samples; at $1.1\times$ ($10\%$ more) the
+system still reaches $91.1$--$91.2$ (eight-sample micro-batches every batch, $35\times$ the
+night's updates, or $16$-sample ones every second batch, $17.6\times$; Figure~\ref{fig:batch},
+Appendix~\ref{app:cost}). On a second held-out split the ordering holds (rotation $91.8\pm0.4$, BP+ER $88.5\pm0.7$,
+unmasked ER $80.0\pm14.1$, narrow night $89.3\pm0.6$), with one exception:
 the same-substrate night, bimodal on the first split, reaches $91.5\pm0.5$ on the second and
 trails by only $0.3$ there (Appendix~\ref{app:val}).
 
@@ -406,8 +407,9 @@ $+3.6$ on top of isolation), and isolation's seed-paired margin is $0.1$ $[-0.3,
 batch $16$, $0.3$ $[-0.2,+0.6]$ at $8$ and $0.3$ $[-0.5,+1.2]$ at $4$ --- within seed noise at
 every size --- with $0.4$ on the static axis ($94.1$ vs.\ $93.7$). At two-sample batches both lose
 heavily, but isolated replay degrades gracefully ($79.0\pm3.2$, every seed within $75$--$84$)
-where unmasked replay collapses in three of six seeds (Appendix~\ref{app:isomargin}):
-isolation's accuracy value is the removal of a failure mode, not a margin. What it buys at
+where unmasked replay fails severely (below $60\%$) in three of six seeds
+(Appendix~\ref{app:isomargin}): in the seeds and configurations tested, isolation's accuracy
+value is the absence of those failures, not a margin. What it buys at
 every batch size is the guarantee that, for the current input under its suppression mask,
 replay leaves the hidden activities unchanged --- exactly on the proven channels, within the
 margin elsewhere; without it replay micro-batches can perturb the live coalition and the
@@ -415,13 +417,13 @@ outcome rests on the rotation's tolerance of that perturbation.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=.38\linewidth]{fig_batch.pdf}\hfill
-\includegraphics[width=.38\linewidth]{fig_timing.pdf}
+\includegraphics[width=.36\linewidth]{fig_batch.pdf}\hfill
+\includegraphics[width=.36\linewidth]{fig_timing.pdf}
 \caption{\textbf{Left (isolation):} split-MNIST accuracy against replay batch size, the
 number of updates fixed within each series (one per waking batch; $20$ per epoch for the
 night, whose samples therefore fall with its batch): the full system is flat down to $8$
 samples and loses $1.9$ at $4$ ($12.7$ at $2$, Appendix~\ref{app:isomargin}); rotation with
-unmasked replay (dashed) trails it by $0.1$ to $0.3$, within seed noise, and collapses in half
+unmasked replay (dashed) trails it by $0.1$ to $0.3$, within seed noise, and fails severely in half
 the seeds at batch $2$; without rotation, unmasked and isolated replay and the offline night
 all degrade. \textbf{Right (timing):} accuracy against the number of waking
 replay events: trickles and clocked bursts fail alike, pressure-triggered bursts (star) keep
@@ -442,8 +444,8 @@ effect, resting the recent winners the rest. Rotation is the only statically cos
 component, $1.2$--$1.7$ points at this activity fraction ($94.1$ against $95.3$--$95.8$
 without it; isolation adds $0.4$). The unmasked control is not handicapped by the replay
 step ($3\eta$ against a waking step of $\eta/16$): over replay gains $\{1/16,1/4,1,3,10\}$
-both curves peak at the default ($91.6$ masked, $85.4$ unmasked), gain $10$ destabilises
-both, and the rotation-free unmasked control never closes the gap; the sweep bounds that
+masked replay peaks at the default ($91.6$) while unmasked replay plateaus from gain $1$ to $3$
+($85.7$, $85.4$), gain $10$ destabilises both, and the rotation-free unmasked control never closes the gap; the sweep bounds that
 control, it does not estimate isolation's own contribution (the square above does;
 Appendix~\ref{app:negative}). \emph{Mirror isolation} (waking updates barred from synapses
 that served the last replay batch, replay unmasked) reaches only $78.0\pm3.2$: this
@@ -551,14 +553,12 @@ concedes $1$--$3$ sequential points to the per-dataset tuned value and gains $1.
 static points on CIFAR-10, feature CIFAR-10 and both CIFAR-100 variants; on MNIST it gains
 $1.1$ on the second held-out split ($95.2\pm0.4$) but one of six seeds collapsed on the
 first ($93.5\pm4.3$), so we claim no static gain there. On CIFAR-100 it lifts the system
-$2.7$--$4.7\times$ over the manual rescue. The realised $\lambda_\ell$ self-differentiates as
-the tuning history would predict ($10^{-5}$ on MNIST streams to $3\times10^{-3}$ on raw
-CIFAR): the per-dataset ladder was a signal-to-decay ratio in disguise
-(Appendix~\ref{app:controller}).
+$2.7$--$4.7\times$ over the manual rescue. The realised $\lambda_\ell$ spans $10^{-5}$ (MNIST streams) to $3\times10^{-3}$ (raw CIFAR): the
+per-dataset ladder was a signal-to-decay ratio in disguise (Appendix~\ref{app:controller}).
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=.64\linewidth]{fig_depth.pdf}
+\includegraphics[width=.56\linewidth]{fig_depth.pdf}
 \caption{\textbf{Depth is the same starvation on another axis, and two mechanisms cross it.}
 Sequential (left) and static (middle) accuracy against hidden depth (three seeds; six at the
 skip system's depth five): the fixed decay without skips collapses, the controller degrades
@@ -571,14 +571,12 @@ per-layer decay.}
 static axis dies at four hidden layers ($10.1\pm0.2\%$, chance) and the sequential axis
 collapses at five ($26.3\pm20.2$); under the controller every cell stays alive
 ($90.7\to88.9\to88.1$ sequential, $95.3\to94.8\to89.6$ static). The residual toll is
-architectural: ResNet-style skip synapses (Appendix~\ref{app:alg}: $S^\ell$ carrying
-$a^{\ell-2}$ into each deep hidden layer, learned and replay-masked by the same rules) restore the thick error path, and the five-hidden-layer
+architectural: ResNet-style skip synapses (Appendix~\ref{app:alg}) restore the thick error path, and the five-hidden-layer
 system reaches $91.0\pm0.3/95.8\pm0.3$ (six seeds) against the two-layer default's
 $91.6/94.1$ and the two-layer controller's $90.6/93.5$: $0.6$ sequential points below the
 default and $1.7$ above it on the static axis. The bypass alone also rescues the fixed decay
 ($90.4/93.5$ at depth five), so error-path attenuation is a principal cause of the collapse
-(the fixed decay was not re-tuned per depth; the claim is that the controller needs no
-re-tuning). BP+ER at the same widths is depth-insensitive ($88.9\to87.9$) but forgets
+(the fixed decay was not re-tuned per depth; the controller needs none). BP+ER at the same widths is depth-insensitive ($88.9\to87.9$) but forgets
 $2\times$ more. On CIFAR-100, by contrast, depth is a net loss that skips only half refund,
 while width pays (Appendix~\ref{app:controller}).
 
@@ -588,27 +586,26 @@ while width pays (Appendix~\ref{app:controller}).
 
 \paragraph{What this offers agents.} The construction is a recipe: if an agent's representation is sparse enough that a batch leaves most units silent,
 and its learning rule yields a local error signal, consolidation can run in the silent degrees
-of freedom between the steps of the stream, with no separate offline phase --- in the supervised setting studied here, with a conditional
-guarantee on the computation in use, at a higher total compute ($11\times$ the night's
-wall-clock, unoptimised). The
+of freedom between the steps of the stream, with no separate offline phase --- with a conditional guarantee on the computation in use, at a
+higher total compute ($6\times$ the night's wall-clock, unoptimised). The
 invariance closes the channel through which consolidation would perturb the units in use; its
 accuracy value is $2.6$ points without rotation and
-$0.1$--$0.3$ with it (Table~\ref{tab:ablation}), so isolation's contribution is the guarantee,
-and at two-sample batches the collapse it prevents.
+$0.1$--$0.3$ with it (Table~\ref{tab:ablation}), so isolation's contribution is the guarantee
+and, at two-sample batches, none of the severe failures the unmasked control showed in half the
+seeds.
 We treat the biology as analogy, not mechanistic equivalence; the refractory rule mirrors the
 ON/OFF finding of \citet{driessen2026} and the trigger dissociation is a testable prediction.
 
 \paragraph{Limitations.} All results are at MLP scale on MNIST/CIFAR variants with three to
-six seeds; configurations were chosen on the official test sets (the development set) and every reported
-number is on held-out training data (two independent splits for the headline rows); the protocol is five epochs per task (a single pass keeps
+six seeds; every main comparison is on held-out training data (two splits for the headline rows;
+exploratory results labelled); the protocol is five epochs per task (a single pass keeps
 the lead, Table~\ref{tab:ablation}). The lead over the best offline night is $2.5$ points
 on the first split and $0.3$ on the second, where the night's seed variance vanished; the
 leads over BP+ER and unmasked replay hold on both. BP+ER (an external reference,
 not a state-of-the-art claim; no DER++-style baselines) keeps a $0.5$-point lead on feature
 CIFAR-10; rotation keeps a static price of $1$--$2$ points; CIFAR-100 is
 floor-regime; the energy figure is an arithmetic proxy. Within these limits the conclusion stands: consolidation does not require a separate offline
-phase, and the learner stays above the strongest offline schedule at $2.4\times$ its replay
-samples and at $1.2\times$.
+phase, at $2.2\times$ the night's replay samples and, on the first split, at $1.1\times$.
 Code can be found at \url{https://anonymous.4open.science/r/IaC-CL-with-no-offline}
 
 \clearpage
@@ -809,9 +806,9 @@ local burst-error objective itself costs nothing. Settling cannot merely be shor
 Kolen--Pollack decay and even restored weight transport are accuracy-neutral at this scale ---
 the decay earns its keep as a regulariser on harder inputs. Spiking-flavoured training fails
 outright: spiking is affordable at inference, not as a training-time code. On the plain
-substrate SGD loses $1.3$ points to Adam, yet inside the consolidation loop it wins on both
-axes: per-synapse adaptive state is an asset while every synapse trains on every batch and a
-liability once updates become mask-confined.
+substrate SGD loses $1.3$ points to Adam, while inside the consolidation loop the two tie
+(Table~\ref{tab:ablation}): per-synapse adaptive state is an asset while every synapse trains
+on every batch and no longer one once updates become mask-confined.
 
 \begin{table}[h]
 \centering\small
@@ -891,17 +888,19 @@ accuracy $94.2\%$) for a proxy of $117$\,nJ per sample against $2461$\,nJ for de
 inference ($21\times$) and $526$\,nJ for event-driven rate inference ($4.5\times$), and is
 monotone in $T_s$ ($94.0\%$ at $T_s{=}32$, $476$\,nJ); the rotation-free control reaches
 $94.2\%$ at $T_s{=}8$ and dips to $93.9\%$ at $T_s{=}32$ (Figure~\ref{fig:appfigs}).
-\paragraph{Updates and wall-clock.} Samples are not the only cost: the headline schedule makes $18{,}760$ masked updates against
-the night's $480$ ($39\times$), and its training wall-clock on one CPU is $6.6$ min against
-$0.6$ for the night, $0.4$ with no replay and $6.0$ for unmasked interleaved replay --- the
-per-batch replay step, not the sample count, is the online price of consolidating during the
-stream, in an unoptimised implementation whose mask construction is dense.
+\paragraph{Updates and wall-clock.} Samples are not the only cost: the headline schedule makes $16{,}885$ masked updates against
+the night's $480$ ($35\times$; counts from the reported runs, whose stream is nine tenths of the
+training set), and its training wall-clock on one CPU thread is $8.8$ min against $1.4$ for the night, $1.0$ with
+no replay and $8.6$ for unmasked interleaved replay (one run each, same protocol and thread
+count) --- the per-batch replay step, not the sample count, is the online price of consolidating
+during the stream, in an unoptimised implementation whose mask construction is dense.
 Replay cost is reported in samples ($R$ = replay batches $\times$ batch size). The night costs
 $480\times256\approx1.2\times10^5$ samples per run. The headline configuration (one
-$16$-sample micro-batch per waking batch) costs $18{,}760\times16\approx3.0\times10^5$
-($2.4\times$ the night) for $91.6\pm0.3$. Two schedules meet the night's budget with approximately $1.22\times$: eight-sample micro-batches at
-every waking batch ($1.5\times10^5$, $91.1\pm0.4$) and $16$-sample micro-batches at every
-second one ($1.5\times10^5$, $91.2\pm0.2$ sequential, $93.1\pm0.2$ static); pressure-triggered
+$16$-sample micro-batch per waking batch) costs $16{,}885\times16\approx2.7\times10^5$
+($2.2\times$ the night) for $91.6\pm0.3$. Two schedules meet the night's budget within $1.1\times$:
+eight-sample micro-batches at every waking batch ($1.35\times10^5$, $91.1\pm0.4$) and $16$-sample
+micro-batches at every second one ($8{,}442$ updates, $1.35\times10^5$, $91.2\pm0.2$ sequential,
+$93.1\pm0.2$ static); pressure-triggered
 bursts of $16$ at a third of the events reach $88.6\pm1.6$. Accuracy is bought by \emph{frequency} of small
 isolated updates rather than by replayed samples. Figure~\ref{fig:frontier} draws the operating frontier of
 the record substrate.
@@ -911,8 +910,11 @@ the record substrate.
 \includegraphics[width=.6\linewidth]{fig_frontier.pdf}
 \caption{\textbf{Operating frontier} at the $10\%$ activity fraction under heavy-ball SGD:
 split-MNIST sequential accuracy against i.i.d.\ static accuracy (held-out split). Blue:
-non-dominated configurations; purple: dominated. No single configuration wins both axes; always-on rotation is the sequential default and the adaptive
-decay extends the static side.}
+non-dominated by seed means (the bout-committed gate, the silent mask, unmasked rotation-free
+replay); purple: dominated. The top cluster (always-on rotation, bout gate, anchor, masked
+Adam) lies within seed noise of one another; the frontier trades sequential for static
+accuracy through the silent and unmasked variants, and the adaptive decay is dominated on
+this split.}
 \label{fig:frontier}
 \end{figure}
 
@@ -924,9 +926,8 @@ sequential cell is reported; BP+ER was swept over learning rate ($3{\cdot}10^{-4
 $10^{-3}$, $3{\cdot}10^{-3}$), width and buffer size; the local learner over $\eta$
 (Appendix~\ref{app:eta}), replay batch size, cadence and the gates of
 Table~\ref{tab:ablation}. Selection everywhere was sequential
-accuracy at $K{=}1000$ with the static axis reported alongside, on the official test set,
-which served as the development set; the numbers reported are on the held-out split
-(Appendix~\ref{app:val}). Pairing seeds by index on that split, the local system's margin
+accuracy at $K{=}1000$ with the static axis reported alongside, on the official test split (the development set); the comparisons reported are on the held-out
+split (Appendix~\ref{app:val}). Pairing seeds by index on that split, the local system's margin
 over the narrow-substrate night is $+2.5$ points (bootstrap 95\% CI $[+1.3,+4.8]$, three seed
 pairs), over the same-substrate night $+2.6$ ($[+0.2,+5.2]$, six pairs; the night's seed
 variance makes this one fragile, and on the second split it shrinks to $+0.3$), over unmasked
@@ -1034,22 +1035,25 @@ $\approx10\%$, hidden dimensionality $0$); the waking path alone learns normally
 effective step, so the collapse is the replay path's: the velocity's $\sim\!10\times$
 averaging of the $16$-sample replay micro-batches is what heavy-ball provides. Re-scaling the replay gain ($\eta{=}0.2$, gain $0.3$) makes pure SGD viable at
 $88.4\pm0.5/89.4\pm0.3$; other settings are fragile (development-phase sweep).
-\paragraph{Exactness measurement.} Under the $5\%$ Adam-era configuration the isolated update
-altered the top hidden code of $1.0\%$ of waking samples per step (against $0.32\%$ for the
-record configuration); on raw CIFAR-10 (one seed) the hidden-code rate is $0.46\%$ while the
-prediction rate rises to $3.6\%$, low-margin predictions flipping more easily through the
-plastic readout. The numbers in Section~\ref{sec:method} are population rates over every
-replay step of a full run. They are taken under the implemented order of Algorithm~\ref{alg:step},
-in which the awake sets come from the activities before the waking update; re-inferring
-the batch after that update and masking on the post-update awake sets lowers the hidden-code
-rate to $0.30\%$ ($0.17\%$ with the readout isolated) and leaves the prediction rate
-($0.30\%$; $0.000\%$ isolated), the margin-violation rate and the accuracy unchanged ($92.2$ vs.\ $92.0$, one seed,
-development runs): the residual drift is the unenforced margin, not the ordering.
+\paragraph{Exactness measurement.} The numbers in Section~\ref{sec:method} are population rates
+over every replay step of a full run under the reported protocol; the rest of this paragraph
+reports development runs (official test split, full training set, $18{,}760$ updates), on
+which the record configuration's hidden-code rate was $0.32\%$. Under the $5\%$ Adam-era
+configuration the isolated update altered the top hidden code of $1.0\%$ of waking samples per
+step; on raw CIFAR-10 (one seed) the hidden-code rate is $0.46\%$ while the prediction rate
+rises to $3.6\%$, low-margin predictions flipping more easily through the plastic readout. The
+rates are taken under the implemented order of Algorithm~\ref{alg:step}, in which the awake
+sets come from the activities before the waking update; re-inferring the batch after that
+update and masking on the post-update awake sets lowers the hidden-code rate from $0.32\%$ to
+$0.30\%$ ($0.17\%$ with the readout isolated) and leaves the prediction rate ($0.30\%$;
+$0.000\%$ isolated), the margin-violation rate and the accuracy unchanged ($92.2$ vs.\ $92.0$,
+one seed): the residual drift is the unenforced margin, not the ordering.
 \paragraph{Replay gain.} Sweeping the replay gain over $\{1/16,1/4,1,3,10\}$ (default $3$;
 $\eta_r=3\eta$ against a waking step of $\eta/16$) moves masked replay
 $67.2\pm3.0\to86.8\pm1.1\to90.8\pm0.1\to91.6\pm0.3\to74.2\pm32.1$ and unmasked replay
 without rotation $61.6\pm7.2\to81.4\pm4.5\to85.7\pm2.2\to85.4\pm3.5\to47.3\pm30.7$
-(sequential; three seeds, six at gain $10$): both peak at the default, gain $10$
+(sequential; three seeds, six at gain $10$): masked replay peaks at the default, unmasked
+replay plateaus from gain $1$ to $3$, gain $10$
 destabilises both (two of six seeds collapse for the masked system, four for the unmasked),
 and no replay gain makes the unmasked control competitive.
 \paragraph{Single-pass streams.} With one epoch per task instead of five (everything else
@@ -1119,11 +1123,13 @@ gradient is too noisy for either system --- the isolated one falls to $79.0\pm3.
 --- but the unmasked one bifurcates: three seeds finish at $82.5$--$84.8$, slightly
 \emph{above} their isolated counterparts ($+0.3$, $+1.8$, $+8.1$), one at $58.2$ and two at
 chance ($9.9$). Leaking replay onto the live coalition is therefore not a pure loss --- the
-surviving seeds show that the extra plasticity can help --- but it opens a failure mode that
-the mask closes: with the current input's hidden computation held invariant, the noisiest
-replay degrades the system gracefully instead of destroying it. The paired mean at batch $2$
-($+24$ $[-0.2,+48.5]$) describes that failure mode, not a margin, and is kept out of the
-ranges quoted in the main text.
+surviving seeds show that the extra plasticity can help --- but it exposes a severe-failure mode (final accuracy below $60\%$: two seeds at chance, one at
+$58.2$) that the isolated system did not show in six seeds: with the current input's hidden
+computation held invariant, the noisiest replay degraded the system gracefully in every seed
+tested. Six seeds without a severe failure bound its frequency; they do not prove the mode
+absent, and the masked system itself destabilises at replay gain $10$
+(Appendix~\ref{app:negative}). The paired mean at batch $2$ ($+24$ $[-0.2,+48.5]$) describes the
+unmasked failures, not a margin, and is kept out of the ranges quoted in the main text.
 
 \begin{figure}[h]
 \centering
@@ -1131,7 +1137,7 @@ ranges quoted in the main text.
 \caption{\textbf{Isolation across replay batch sizes} (held-out split). \textbf{Left:}
 split-MNIST accuracy against replay batch size for isolated replay (the full system) and for
 rotation with unmasked replay, every seed shown; at batch $2$ no unmasked mean is drawn
-because three of six seeds fail (values at the axis floor). \textbf{Right:} the seed-paired
+because three of six seeds fail severely (values at the axis floor). \textbf{Right:} the seed-paired
 margin of isolation with a 95\% bootstrap interval at the batch sizes where the unmasked
 run does not collapse.}
 \label{fig:isomargin}
@@ -1139,15 +1145,15 @@ run does not collapse.}
 
 \section{Development-phase numbers and a second held-out split}
 \label{app:val}
-Every configuration in this paper was selected on the official test sets, which served as
-the development set (some four hundred sequential-axis configurations over the project); the
-paper reports numbers measured on a stratified tenth of the training data held out from
-training and never used for any decision. Table~\ref{tab:val} places the development-phase
-numbers beside the reported ones and beside a second, independent held-out tenth (a
-different split seed) for the headline rows. Over the $87$ sequential configurations run
+Configurations were selected on the official test splits (the development set) and frozen;
+the comparisons in the main text re-train them on nine tenths of the training data and
+evaluate on the held-out tenth, which took part in no selection. Table~\ref{tab:val} places
+the development-set numbers beside the held-out ones and beside a second held-out tenth for
+the headline rows (drawn with a different seed; the two tenths share $9\%$ of their samples,
+so they are not disjoint test sets). Over the $87$ sequential configurations run
 under both protocols, reported numbers sit $1.1$ points below the development numbers on
-average and rank-correlate with them at Spearman $\rho=0.97$; every ordering carried by the
-paper holds on both held-out splits, with one magnitude that does not: the same-substrate
+average and rank-correlate with them at Spearman $\rho=0.97$ (a robustness check, not a proof that selection
+bias is absent); every ordering carried by the paper holds on both held-out splits, with one magnitude that does not: the same-substrate
 night, bimodal on the first split ($89.0\pm3.5$), reaches $91.5\pm0.5$ on the second and
 trails the full system by $0.3$ there. The adaptive decay's static margin on MNIST is
 likewise split-dependent ($93.5\pm4.3$ with one collapsed seed on the first split,
@@ -1156,14 +1162,14 @@ the headline configuration on the reported split.
 
 \begin{table}[H]
 \centering\small
-\caption{\textbf{Development-phase (official test set) numbers beside the reported held-out
-numbers and a second held-out split.} Sequential accuracy, with the static axis on its own row
+\caption{\textbf{Development-set (official test split) numbers beside the held-out numbers and
+a second held-out split.} Sequential accuracy, with the static axis on its own row
 where the paper reports it; six seeds on the reported split for the headline rows, three
 elsewhere. Lower block: raw split CIFAR-10.}
 \label{tab:val}
 \begin{tabular}{@{}lccc@{}}
 \toprule
-& development (test) & reported (held-out) & second split \\
+& development set & held-out split 1 & held-out split 2 \\
 \midrule
 always-on rotation (default) & $92.7\pm0.3$ & $91.6\pm0.3$ & $91.8\pm0.4$ \\
 \quad static & $94.7\pm0.3$ & $94.1\pm0.2$ & $94.1\pm0.6$ \\
