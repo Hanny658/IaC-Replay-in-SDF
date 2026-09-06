@@ -72,13 +72,15 @@ ax.errorbar(bs, y, e, marker="o", ms=3.5, lw=1.2, color=C["refr"], label="refrac
 _, y, e = series(["g26_ctrl_rot_noiso_br4", "g26_ctrl_rot_noiso_br8", "g26_ctrl_rot_noiso"])
 ax.errorbar([4, 8, 16], y, e, marker="v", ms=3.5, lw=1.2, ls="--", color=C["press"], label="rotation, unmasked replay")
 m, e1, _ = stat("g17_sgd_none_s10")
-ax.errorbar([16], [m], [e1], marker="s", ms=4, lw=0, elinewidth=1.0, capsize=2, color=C["none"], label="unmasked, no rotation (batch 16)")
+ax.errorbar([16], [m], [e1], marker="s", ms=4, lw=0, elinewidth=1.0, capsize=2, color=C["none"], label="unmasked, no rotation")
 m, e1, _ = stat("g16_sgd_silent_s10_w512")
-ax.errorbar([16], [m], [e1], marker="^", ms=4, lw=0, elinewidth=1.0, capsize=2, color=C["grey"], label="isolation, no rotation (batch 16)")
+ax.errorbar([16], [m], [e1], marker="^", ms=4, lw=0, elinewidth=1.0, capsize=2, color=C["grey"], label="isolation, no rotation")
 _, y, e = series(["g17_night_nb16_s10", "g17_night_s10"])
 ax.errorbar([16, 256], y, e, marker="D", ms=3.5, lw=1.2, color=C["night"], label="offline night")
 ax.set_xscale("log", base=2); ax.set_xlabel("replay batch size"); ax.set_ylabel("final accuracy (%)")
-ax.legend(fontsize=6.3, loc="lower right")
+# legend in a band below the data (lowest error bar reaches 82), two columns, no overlap with the batch-16 markers
+ax.set_ylim(78.5, None)
+ax.legend(fontsize=6.3, loc="lower center", ncol=2, columnspacing=0.9, handlelength=1.6, handletextpad=0.5, borderaxespad=0.3)
 fig.savefig(os.path.join(FIGS, "fig_batch.pdf")); plt.close(fig)
 
 # ---------------- Fig: rotation price/gain and the novelty gate ----------------

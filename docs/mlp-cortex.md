@@ -689,6 +689,12 @@ workshop 另有 1 个 `ectt1000.pk` 位图字体（T1 编码下 `\url` 用的 EC
 `\renewcommand{\ttdefault}{lmtt}`（Latin Modern 打字机，Type 1）。重编译后两版 Type 3 = 0，页码不变
 （workshop 19 页正文止于第 8 页，preprint 23 页）。
 
+### Figure 2 左图 legend 与数据重叠（2026-09-06 夜）
+
+`fig_batch.pdf` 的 legend 原在 lower right，压住 batch-16 的 unmasked/isolation 标记和夜间曲线（旧图同样如此，
+与字体无关）。`make_figs.py`：y 轴下限扩到 78.5，legend 改为 lower center 两列，标签去掉 "(batch 16)"（位置已
+说明）。图高不变，两版页码不变。
+
 ## 4. 正面主张（按新颖性排序，检索基准 2026-08）
 
 1. **使用依赖的单元级局部睡眠可以完全替代睡眠夜**：refractory 轮休 + 精确隔离 + 连续微批重放，
