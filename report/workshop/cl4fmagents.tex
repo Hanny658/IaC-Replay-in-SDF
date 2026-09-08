@@ -56,8 +56,9 @@ unmasked interleaved replay; in a single pass over the stream, where one offline
 task is too few, it leads DER++ and its lead over offline rehearsal grows to $15$ points. On
 split CIFAR-10 it again leads offline rehearsal and experience replay, but trails ER-ACE and
 DER++ by two to three points. The construction is not tied to the local learner: on a
-backprop network with $k$-winner-take-all hidden layers, refractory rotation lifts
-interleaved replay above DER++ and isolation again costs nothing on top of it.
+backprop network with $k$-winner-take-all hidden layers under the same schedule, refractory
+rotation adds half a point in five epochs and three in a single pass, and isolation again
+costs nothing on top of it.
 \end{abstract}
 
 % ================================================================ 1
@@ -492,8 +493,9 @@ buffers the ceiling is the local learner's own i.i.d.\ accuracy ($94.1$), not th
 local rule, so Table~\ref{tab:bpk} runs the same schedule on a backprop MLP of the same width
 with \kwta{} hidden layers at the same $10\%$ fraction. Rotation transfers: it lifts
 interleaved replay from $91.7\pm0.4$ to $92.2\pm0.3$ (seed-paired $+0.5$ $[+0.2,+0.8]$) and
-from $89.3$ to $92.7$ in a single pass, above DER++ ($+0.7$ $[+0.3,+1.1]$) and above the
-local learner itself, at a static price of $0.5$--$0.9$ points. Isolation on top of rotation
+from $89.3$ to $92.7$ in a single pass ($+3.4$ $[+2.8,+4.0]$), to the level of the local
+learner and of DER++ under its own batch-$256$ protocol ($91.5$), at a static price of
+$0.5$--$0.9$ points. Isolation on top of rotation
 again costs nothing ($-0.1$ $[-0.3,+0.1]$) and brings the guarantee. Isolation alone,
 however, hurts the backprop learner ($84.7\pm2.6$, seven points below interleaved replay)
 where it helped the local one: without rotation the channel that natural silence leaves open
