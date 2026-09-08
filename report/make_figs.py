@@ -56,7 +56,7 @@ for lab, cfg, mk, col in PTS:
                 lw=0, elinewidth=1.0, capsize=2, color=col, label=lab)
 night = stat("ctx_nrem_rand_1000")[0]
 ax.axhline(night, color=C["night"], lw=1, ls="--")
-ax.text(1450, night + 1.1, "offline night (480 batches)", color=C["night"], fontsize=6.5, ha="left")
+ax.text(1450, night + 1.1, "offline rehearsal (480 batches)", color=C["night"], fontsize=6.5, ha="left")
 ax.set_xscale("log"); ax.set_xlabel("replay batches during wake"); ax.set_ylabel("final accuracy (%)")
 ax.set_xticks([2e3, 5e3, 1e4, 2e4]); ax.set_xticklabels(["2k", "5k", "10k", "20k"])
 ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
@@ -68,7 +68,7 @@ fig, ax = plt.subplots(figsize=(3.4, 2.6))
 bs = [4, 8, 16, 64, 256]
 cfgs = ["g17_sgd_br4_s10", "g17_sgd_br8_s10", "g16_sgd_refr_s10_w512", "g17_sgd_br64_s10", "g17_sgd_br256_s10"]
 _, y, e = series(cfgs)
-ax.errorbar(bs, y, e, marker="o", ms=3.5, lw=1.2, color=C["refr"], label="refractory local sleep")
+ax.errorbar(bs, y, e, marker="o", ms=3.5, lw=1.2, color=C["refr"], label="isolated replay + rotation (ours)")
 _, y, e = series(["g26_ctrl_rot_noiso_br4", "g26_ctrl_rot_noiso_br8", "g26_ctrl_rot_noiso"])
 ax.errorbar([4, 8, 16], y, e, marker="v", ms=3.5, lw=1.2, ls="--", color=C["press"], label="rotation, unmasked replay")
 m, e1, _ = stat("g17_sgd_none_s10")
@@ -76,7 +76,7 @@ ax.errorbar([16], [m], [e1], marker="s", ms=4, lw=0, elinewidth=1.0, capsize=2, 
 m, e1, _ = stat("g16_sgd_silent_s10_w512")
 ax.errorbar([16], [m], [e1], marker="^", ms=4, lw=0, elinewidth=1.0, capsize=2, color=C["grey"], label="isolation, no rotation")
 _, y, e = series(["g17_night_nb16_s10", "g17_night_s10"])
-ax.errorbar([16, 256], y, e, marker="D", ms=3.5, lw=1.2, color=C["night"], label="offline night")
+ax.errorbar([16, 256], y, e, marker="D", ms=3.5, lw=1.2, color=C["night"], label="offline rehearsal")
 ax.set_xscale("log", base=2); ax.set_xlabel("replay batch size"); ax.set_ylabel("final accuracy (%)")
 # legend in a band below the data (lowest error bar reaches 82), two columns, no overlap with the batch-16 markers
 ax.set_ylim(78.5, None)
