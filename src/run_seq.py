@@ -1047,6 +1047,69 @@ def load_cifar100_feat(n_filters=256, patch=6, stride=2, seed=7):
     return Xtr_f.astype(np.float32), ytr, Xte_f.astype(np.float32), yte
 
 
+# ---- 27 (workshop submission): single-pass variants of the ablation rows, CIFAR-10 single pass,
+# the buffer-size axis, and the published interleaved-replay baselines under backprop.
+for _n, _src in {"silent": "g16_sgd_silent_s10_w512", "rot_noiso": "g26_ctrl_rot_noiso",
+                 "random_rot": "g26_ctrl_random_rot", "readout_only": "g26_ctrl_readout_only",
+                 "mirror": "g17_mirror_s10", "soft": "g17_soft_s10",
+                 "night_narrow": "ctx_nrem_rand_1000"}.items():
+    CONFIGS[f"g27_stream_{_n}"] = dict(CONFIGS[_src], epochs=1)
+for _n, _src in {"sgd_refr": "cif_s10_sgd_refr", "sgd_none": "cif_s10_sgd_none", "night": "cif_s10_night",
+                 "bp_er": "cif_bp_er_1000", "ctx_none": "cif_s10_ctx_none"}.items():
+    CONFIGS[f"cif_stream_{_n}"] = dict(CONFIGS[_src], epochs=1)
+for _k in (200, 5000):
+    CONFIGS[f"g27_refr_K{_k}"] = dict(CONFIGS["g16_sgd_refr_s10_w512"], buffer=_k)
+# baselines: same reservoir buffer, waking batch and Adam as bp_er_1000; width and loss are swept on
+# the development split like bp_er itself (Appendix: baseline tuning), alpha / beta for DER++.
+for _w, _wt in (((256, 128), ""), ((512, 256), "_w512")):
+    for _loss in ("mse", "ce"):
+        _lt = "" if _loss == "mse" else "_ce"
+        _base = dict(model="bp", buffer=1000, policy="random", hidden=_w, bp_loss=_loss)
+        if f"bp_er_1000{_wt}{_lt}" not in CONFIGS:
+            CONFIGS[f"bp_er_1000{_wt}{_lt}"] = dict(_base, replay="er")
+        CONFIGS[f"bp_agem_1000{_wt}{_lt}"] = dict(_base, replay="agem")
+        for _a in (0.1, 0.3, 1.0):
+            for _b in (0.5, 1.0):
+                CONFIGS[f"bp_derpp_a{_a}_b{_b}{_wt}{_lt}"] = dict(_base, replay="derpp", alpha=_a, beta=_b)
+    CONFIGS[f"bp_erace_1000{_wt}"] = dict(model="bp", buffer=1000, policy="random", hidden=_w, bp_loss="ce", replay="erace")
+for _k in [k for k in list(CONFIGS) if k.startswith(("bp_er_1000", "bp_agem_1000", "bp_derpp_", "bp_erace_1000"))]:
+    if f"cif_{_k}" not in CONFIGS:  # the same baselines on raw split CIFAR-10 (cif_bp_er_1000 already exists)
+        CONFIGS[f"cif_{_k}"] = dict(CONFIGS[_k], dataset="cifar")
+
+
+# DER++ with the distillation weight in the range of the published implementation: our alpha
+# multiplies the per-sample SUM of squared logit differences (C = 10 times the mean-reduced form),
+# so alpha = 0.01 / 0.03 here correspond to 0.1 / 0.3 there.
+for _w, _wt in (((256, 128), ""), ((512, 256), "_w512")):
+    for _a in (0.01, 0.03):
+        for _b in (0.5, 1.0):
+            CONFIGS[f"bp_derpp_a{_a}_b{_b}{_wt}_ce"] = dict(model="bp", buffer=1000, policy="random", hidden=_w,
+                                                           bp_loss="ce", replay="derpp", alpha=_a, beta=_b)
+            CONFIGS[f"cif_bp_derpp_a{_a}_b{_b}{_wt}_ce"] = dict(CONFIGS[f"bp_derpp_a{_a}_b{_b}{_wt}_ce"], dataset="cifar")
+
+# selected on the development split (best sequential accuracy per method): single-pass and
+# buffer-size variants of the backprop baselines, split-MNIST and raw CIFAR-10
+for _n, _src in {"derpp": "bp_derpp_a0.03_b1.0_w512_ce", "erace": "bp_erace_1000", "agem": "bp_agem_1000_w512"}.items():
+    CONFIGS[f"g27_stream_bp_{_n}"] = dict(CONFIGS[_src], epochs=1)
+for _n, _src in {"derpp": "cif_bp_derpp_a1.0_b1.0_w512_ce", "erace": "cif_bp_erace_1000_w512", "agem": "cif_bp_agem_1000_w512"}.items():
+    CONFIGS[f"cif_stream_bp_{_n}"] = dict(CONFIGS[_src], epochs=1)
+for _k in (200, 5000):
+    CONFIGS[f"bp_derpp_K{_k}"] = dict(CONFIGS["bp_derpp_a0.03_b1.0_w512_ce"], buffer=_k)
+
+
+# 27b: does the mechanism live only on the local learner?  The same schedule (waking batch 16,
+# one 16-sample replay micro-batch per waking batch, K = 1000 reservoir) on a backprop MLP with
+# k-WTA hidden layers: interleaved replay (er), isolated replay (iso), each with and without the
+# refractory rotation (rot); Adam learning rate swept on the development split.
+for _var, _iso, _rot in (("er", False, False), ("iso", True, False), ("er_rot", False, True), ("iso_rot", True, True)):
+    for _lt, _lr in (("1e5", 1e-5), ("3e5", 3e-5), ("1e4", 1e-4), ("3e4", 3e-4), ("1e3", 1e-3), ("3e3", 3e-3)):
+        _base = dict(model="bp", schedule="bp_local", buffer=1000, policy="random", hidden=(512, 256), bp_kwta=0.10,
+                     batch_wake=16, batch_replay=16, isolate=_iso, rotate=_rot, bp_lr=_lr)
+        CONFIGS[f"bpk_{_var}_lr{_lt}"] = dict(_base)
+        CONFIGS[f"bpk_{_var}_lr{_lt}_static"] = dict(_base, static=True)
+        CONFIGS[f"bpk_{_var}_lr{_lt}_stream"] = dict(_base, epochs=1)
+
+
 def n_classes(cfg):
     return 100 if str(cfg.get("dataset", "")).startswith("cifar100") else 10
 
@@ -1156,8 +1219,9 @@ class Buffer:
     def __init__(self, K, policy, g, top_frac=0.3):
         self.K, self.policy, self.g, self.top_frac = K, policy, g, top_frac
         self.X, self.Y, self.seen = [], [], 0
+        self.Z = []  # 27: the logits a sample was written with (DER++), aligned with X / Y
 
-    def offer(self, Xb, yb, surprise):
+    def offer(self, Xb, yb, surprise, zb=None):
         """One-shot writes.  Reservoir sampling keeps the buffer uniform over the eligible stream.
 
         surprise_bal: the surprise gate is applied within each class of the batch and the buffer
@@ -1189,17 +1253,26 @@ class Buffer:
         for i in elig.tolist():
             self.seen += 1
             if len(self.X) < self.K:
-                self.X.append(Xb[i]); self.Y.append(int(yb[i]))
+                self.X.append(Xb[i]); self.Y.append(int(yb[i])); self.Z.append(None if zb is None else zb[i])
             else:
                 j = int(torch.randint(0, self.seen, (1,), generator=self.g))
                 if j < self.K:
                     self.X[j], self.Y[j] = Xb[i], int(yb[i])
+                    self.Z[j] = None if zb is None else zb[i]
 
     def sample(self, n):
         if not self.X:
             return None, None
         idx = torch.randint(0, len(self.X), (min(n, len(self.X)),), generator=self.g)
         return torch.stack([self.X[i] for i in idx]), torch.as_tensor([self.Y[i] for i in idx])
+
+    def sample_z(self, n):
+        """27: a buffer batch together with the logits stored when each sample was written (DER++)."""
+        if not self.X:
+            return None, None, None
+        idx = torch.randint(0, len(self.X), (min(n, len(self.X)),), generator=self.g)
+        return (torch.stack([self.X[i] for i in idx]), torch.as_tensor([self.Y[i] for i in idx]),
+                torch.stack([self.Z[i] for i in idx]))
 
     def class_counts(self):
         return np.bincount(np.array(self.Y, dtype=int), minlength=10).tolist() if self.Y else [0] * 10
@@ -1231,25 +1304,229 @@ def make_bp(seed, hidden, n_in=784, lr=1e-3, kwta=None, n_out=10):
     return net, torch.optim.Adam(net.parameters(), lr=lr, weight_decay=1e-3)
 
 
-def bp_step(net, opt, Xb, Yb):
-    opt.zero_grad()
-    out = net(Xb)
-    loss = ((out - Yb) ** 2).sum(1).mean()
-    loss.backward()
-    opt.step()
+def bp_loss(out, Yb, kind="mse"):
+    """Per-sample loss of the backprop reference on a one-hot target: squared error (the default
+    used throughout) or cross-entropy (27: the loss the published replay baselines are defined with)."""
+    if kind == "ce":
+        return -(torch.log_softmax(out, 1) * Yb).sum(1)
+    return ((out - Yb) ** 2).sum(1)
+
+
+def _bp_rezero(net):
     wm = getattr(net, "wmasks", None)
     if wm is not None:  # 15F: sparse wiring is structural -- re-zeroed after every step
         with torch.no_grad():
             for lin, m in zip([mm for mm in net if isinstance(mm, torch.nn.Linear)], wm):
                 if m is not None:
                     lin.weight.mul_(m)
-    return ((out.detach() - Yb) ** 2).sum(1)  # per-sample surprise
+
+
+def bp_step(net, opt, Xb, Yb, kind="mse"):
+    opt.zero_grad()
+    out = net(Xb)
+    loss_vec = bp_loss(out, Yb, kind)
+    loss_vec.mean().backward()
+    opt.step()
+    _bp_rezero(net)
+    return loss_vec.detach()  # per-sample surprise
+
+
+BP_BASELINES = ("derpp", "erace", "agem")
+
+
+def bp_baseline_step(replay, net, opt, Xb, yb, onehot, buf, m, cfg):
+    """27: published interleaved-replay baselines under backprop, one waking batch each; the buffer
+    is the same reservoir as bp_er and the replay batch has the waking batch's size m.
+    derpp  Dark Experience Replay++ (Buzzega et al. 2020): the current loss, plus alpha times the
+           squared error between the logits of a buffer batch and the logits stored when those
+           samples were written, plus beta times the label loss on a second buffer batch.
+    erace  ER-ACE (Caccia et al. 2022): cross-entropy on the incoming batch restricted to the
+           classes present in it (the other logits are masked out of the softmax), plus
+           cross-entropy over all classes on a buffer batch.
+    agem   A-GEM (Chaudhry et al. 2019): the incoming gradient is projected so that it does not
+           increase the loss on a buffer batch, then handed to the optimiser.
+    Returns the current batch's logits (detached, DER++ writes them) and its per-sample loss."""
+    kind = cfg.get("bp_loss", "mse")
+    Yb = onehot(yb)
+    opt.zero_grad()
+    out = net(Xb)
+    if replay == "erace":
+        present = torch.zeros(out.shape[1], dtype=torch.bool)
+        present[yb.unique()] = True
+        cur = -(torch.log_softmax(out.masked_fill(~present, -1e9), 1) * Yb).sum(1)
+    else:
+        cur = bp_loss(out, Yb, kind)
+    loss = cur.mean()
+    if replay == "derpp" and buf.X:
+        X1, _, z1 = buf.sample_z(m)
+        X2, y2, _ = buf.sample_z(m)
+        loss = loss + cfg.get("alpha", 0.3) * ((net(X1) - z1) ** 2).sum(1).mean() \
+                    + cfg.get("beta", 0.5) * bp_loss(net(X2), onehot(y2), kind).mean()
+    elif replay == "erace" and buf.X:
+        Xr, yr = buf.sample(m)
+        loss = loss + bp_loss(net(Xr), onehot(yr), "ce").mean()
+    loss.backward()
+    if replay == "agem" and buf.X:
+        params = [p for p in net.parameters()]
+        g_cur = torch.cat([p.grad.flatten() for p in params])
+        opt.zero_grad()
+        Xr, yr = buf.sample(m)
+        bp_loss(net(Xr), onehot(yr), kind).mean().backward()
+        g_ref = torch.cat([p.grad.flatten() for p in params])
+        dot = torch.dot(g_cur, g_ref)
+        if dot < 0:
+            g_cur = g_cur - dot / (torch.dot(g_ref, g_ref) + 1e-12) * g_ref
+        k = 0
+        for p in params:
+            n_p = p.numel()
+            p.grad.copy_(g_cur[k:k + n_p].view_as(p))
+            k += n_p
+    opt.step()
+    _bp_rezero(net)
+    return out.detach(), cur.detach()
 
 
 def ctx_step(net, Xb, Yb, eta):
     x, a, eps = net.relax(Xb, Yb, 0, 0.0)  # sweep: T and gamma unused
     net.local_update(x, a, eps, eta, 1e-3)
     return (eps[net.L] ** 2).sum(1)
+
+
+class BPKWTA(torch.nn.Module):
+    """27b: a backprop MLP with k-WTA hidden layers that exposes the per-layer activities and
+    accepts a suppression mask per hidden layer (the refractory rotation), so that the isolation
+    rule can be tested on a backprop learner under exactly the local schedule of run_local."""
+
+    def __init__(self, sizes, frac):
+        super().__init__()
+        self.lins = torch.nn.ModuleList([torch.nn.Linear(a, b) for a, b in zip(sizes[:-1], sizes[1:])])
+        self.frac = frac
+
+    def forward(self, x, suppress=None):
+        acts, h = [], x
+        for l, lin in enumerate(self.lins[:-1]):
+            a = torch.relu(lin(h))
+            if suppress is not None and suppress[l] is not None:
+                a = a * (1.0 - suppress[l])
+            k = max(1, int(round(self.frac * a.shape[1])))
+            thr = a.topk(k, dim=1).values[:, -1:]
+            a = a * (a >= thr).float()
+            acts.append(a)
+            h = a
+        return self.lins[-1](h), acts
+
+
+def _adam_masked(params, state, lr, t, masks, wd=1e-3, b1=0.9, b2=0.999, eps=1e-8):
+    """Adam with L2 weight decay (as torch.optim.Adam(weight_decay=wd)); with a mask, the weight
+    change AND the moments are confined to the masked entries (the requirement of Section 4)."""
+    for p, m in zip(params, masks):
+        if p.grad is None:
+            continue
+        g = p.grad + wd * p.data
+        ea, es = state[p]
+        if m is None:
+            ea.mul_(b1).add_(g, alpha=1 - b1)
+            es.mul_(b2).addcmul_(g, g, value=1 - b2)
+            p.data.addcdiv_(ea / (1 - b1 ** t), (es / (1 - b2 ** t)).sqrt() + eps, value=-lr)
+        else:
+            ea.copy_(torch.where(m > 0, b1 * ea + (1 - b1) * g, ea))
+            es.copy_(torch.where(m > 0, b2 * es + (1 - b2) * g * g, es))
+            p.data.add_(-lr * m * (ea / (1 - b1 ** t)) / ((es / (1 - b2 ** t)).sqrt() + eps))
+
+
+def run_bp_local(config, seed, epochs_per_task):
+    """27b: the local schedule (waking batch of 16, one replay micro-batch of 16 after every waking
+    batch, reservoir buffer) on a backprop k-WTA MLP.  isolate: replay update masked by the
+    pre-silent-or-post-asleep rule of Eq. (mask), readout unmasked, Adam moments confined to the
+    mask; rotate: units that fired on the waking batch are suppressed on the next one.  Both off:
+    plain interleaved replay on the same learner and schedule."""
+    cfg = CONFIGS[config]
+    K, static = cfg.get("buffer", 0), cfg.get("static", False)
+    iso, rot = bool(cfg.get("isolate")), bool(cfg.get("rotate"))
+    bw, br = cfg.get("batch_wake", 16), cfg.get("batch_replay", 16)
+    lr, gain, kind = cfg.get("bp_lr", 1e-3), cfg.get("replay_gain", 1.0), cfg.get("bp_loss", "mse")
+    Xtr, ytr, Xte, yte, ishape = load_data(cfg)
+    NC = n_classes(cfg)
+    seed_everything(seed)
+    g = torch.Generator().manual_seed(seed)
+    torch.manual_seed(seed)
+    hidden = tuple(cfg.get("hidden", (512, 256)))
+    net = BPKWTA([Xtr.shape[1], *hidden, NC], cfg.get("bp_kwta", 0.10))
+    params = list(net.parameters())
+    state = {p: (torch.zeros_like(p), torch.zeros_like(p)) for p in params}
+    t = 0
+    buf = Buffer(K, "random", g)
+    tasks = [tuple(range(NC))] if static else split_tasks(cfg)
+    onehot = lambda y: torch.nn.functional.one_hot(torch.as_tensor(y), NC).float()
+    acc_matrix = np.full((len(tasks), len(tasks)), np.nan)
+    suppress = [None] * len(hidden)
+    replay_used, asleep_frac, t0 = 0, [], time.time()
+    for ti, classes in enumerate(tasks):
+        m = np.isin(ytr, classes)
+        Xt, yt = to_t(Xtr[m]), torch.as_tensor(ytr[m])
+        n = len(yt)
+        for ep in range(epochs_per_task):
+            perm = torch.randperm(n, generator=g)
+            for i in range(0, n, bw):
+                idx = perm[i:i + bw]
+                Xb, yb = Xt[idx], yt[idx]
+                # waking step under the current suppression, unmasked
+                for p in params:
+                    p.grad = None
+                out, acts = net(Xb, suppress if rot else None)
+                bp_loss(out, onehot(yb), kind).mean().backward()
+                t += 1
+                _adam_masked(params, state, lr, t, [None] * len(params))
+                awake = [(a.detach() != 0).any(0).float() for a in acts]  # from the pre-update pass
+                if rot:
+                    suppress = [aw.clone() for aw in awake]
+                buf.offer(Xb, yb, torch.zeros(len(yb)))
+                if not K:
+                    continue
+                # replay micro-batch, inferred with the suppression removed
+                Xr, yr = buf.sample(br)
+                if Xr is None:
+                    continue
+                for p in params:
+                    p.grad = None
+                out_r, _ = net(Xr, None)
+                bp_loss(out_r, onehot(yr), kind).mean().backward()
+                t += 1
+                masks = [None] * len(params)
+                if iso:
+                    pre_awake = [torch.ones(Xtr.shape[1])] + awake          # the input is always awake
+                    masks = []
+                    for l, lin in enumerate(net.lins):
+                        if l == len(net.lins) - 1:                          # readout row and bias stay plastic
+                            masks += [None, None]
+                        else:
+                            allowed = 1.0 - awake[l][:, None] * pre_awake[l][None, :]
+                            masks += [allowed, 1.0 - awake[l]]
+                    asleep_frac.append([float(1 - aw.mean()) for aw in awake])
+                _adam_masked(params, state, lr * gain, t, masks)
+                replay_used += 1
+        with torch.no_grad():
+            S_te = net(to_t(Xte), None)[0].numpy()
+        pred = S_te.argmax(1)
+        for tj, cj in enumerate(tasks[:ti + 1]):
+            mt = np.isin(yte, cj)
+            acc_matrix[ti, tj] = float((pred[mt] == yte[mt]).mean())
+        print(f"  {config:26s} seed {seed} after task {ti + 1}: per-task acc "
+              f"{[round(float(v), 3) for v in acc_matrix[ti, :ti + 1]]}  buffer {buf.class_counts()}", flush=True)
+    with torch.no_grad():
+        S_te = net(to_t(Xte), None)[0].numpy()
+    final_acc = float((S_te.argmax(1) == yte).mean())
+    T = len(tasks)
+    forgetting = float(np.mean([acc_matrix[j, j] - acc_matrix[T - 1, j] for j in range(T - 1)])) if T > 1 else 0.0
+    out = dict(config=config, seed=seed, model="bp", buffer=K, policy="random", replay="bp_local", static=static,
+               schedule="bp_local", final_acc=final_acc, forgetting=forgetting, acc_matrix=acc_matrix.tolist(),
+               buffer_classes=buf.class_counts(), replay_used=replay_used, hidden=hidden,
+               active_frac=cfg.get("bp_kwta", 0.10),
+               asleep_frac=[float(np.mean(a)) for a in zip(*asleep_frac)] if asleep_frac else None,
+               fit_s=time.time() - t0)
+    print(f"  {config:26s} seed {seed}: FINAL acc {final_acc:.4f}  forgetting {forgetting:.4f}  replay {replay_used}  "
+          f"asleep {out['asleep_frac']}  ({out['fit_s'] / 60:.1f} min)", flush=True)
+    return out
 
 
 def predict(model, net, X):
@@ -1325,8 +1602,12 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
                         Xb_all, yb_all = Xb, yb
                 else:
                     Xb_all, yb_all = Xb, yb
+                if model == "bp" and replay in BP_BASELINES and K:  # 27: DER++ / ER-ACE / A-GEM
+                    out, surprise = bp_baseline_step(replay, net, opt, Xb, yb, onehot, buf, batch, cfg)
+                    buf.offer(Xb, yb, surprise, zb=out if replay == "derpp" else None)
+                    continue
                 if model == "bp":
-                    surprise = bp_step(net, opt, Xb_all, onehot(yb_all))
+                    surprise = bp_step(net, opt, Xb_all, onehot(yb_all), kind=cfg.get("bp_loss", "mse"))
                 else:
                     surprise = ctx_step(net, Xb_all, onehot(yb_all), 1e-3)
                 buf.offer(Xb, yb, surprise[:len(yb)])  # only the fresh samples can be written
@@ -1984,6 +2265,8 @@ def main():
             ep = CONFIGS[config].get("epochs", args.epochs_per_task)  # 26: single-pass streams
             if CONFIGS[config].get("schedule") == "internal":
                 out = run_stream(config, seed, ep, args.batch, args.nrem_gain)
+            elif CONFIGS[config].get("schedule") == "bp_local":
+                out = run_bp_local(config, seed, ep)
             elif CONFIGS[config].get("schedule") == "local":
                 c = CONFIGS[config]
                 out = run_local(config, seed, ep, c.get("batch_wake", 64), args.batch, args.nrem_gain,

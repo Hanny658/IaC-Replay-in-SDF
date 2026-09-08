@@ -750,3 +750,77 @@ python src/run_mnist.py --configs all --seeds 0 1 2 ; python src/run_bio.py --su
 `static_g10_nov15_w512s5`（相对新奇门控）、`g10_k200_pb16_n02`（K=200 方案）、`cif_refr_br16`（CIFAR）、
 `g9a_w512s5_pburst16_t64`（压力触发脉冲串）、`g8_w512s5_loc_refr`（8B 基线）、
 `ctx_nrem_rand_1000`（夜间参照）。全部逐配置 checkpoint 在 `results/bio/seq/parts/`。
+
+### 投稿前夜：backprop 基线、六种子补全、单遍列与 K 轴，workshop 稿件重构（2026-09-07 夜至 09-08 晨）
+
+**动机**：用户判断 workshop 稿件旁线过多、主线被淹没、正文残留开发阶段（官方测试集）数字，并希望补上标准
+CL 基线后再决定是否报告。截稿 2026-09-08 19:59（新加坡时间）。
+
+**代码**：`src/run_seq.py` 的 BP 分支新增 `bp_baseline_step`：DER++（写入时存 logits，`Buffer.Z`/`sample_z`；
+α 乘以逐样本 logit 平方差之和，是公开实现 mean 归约的 10 倍）、ER-ACE（交叉熵，当前 batch 只对出现类别计
+损失）、A-GEM（buffer 梯度投影后交给 Adam）；`bp_loss` 选项 mse/ce。新配置：`bp_{derpp,erace,agem}_*` 网格
+（宽度 256–128 / 512–256 × 损失 × α∈{0.01,0.03,0.1,0.3,1} × β∈{0.5,1}）及 `cif_` 变体；`g27_stream_*`
+（消融行的单遍变体）、`cif_stream_*`、`g27_refr_K200/K5000`、`bp_derpp_K*`。**选参规则不变**：官方测试划分上
+sequential 最高者冻结，再以 `--val` 在留出十分之一上重跑。MNIST 选中 `bp_derpp_a0.03_b1.0_w512_ce`
+（开发集 92.17，与 α=0.3 的 92.14 只差 0.03，仍按规则取最高）、`bp_erace_1000`、`bp_agem_1000_w512`；
+CIFAR 选中 `cif_bp_derpp_a1.0_b1.0_w512_ce`、`cif_bp_erace_1000_w512`、`cif_bp_agem_1000_w512`。
+工具：`scripts/queue_runs.py`（作业清单 + 固定 worker 数，OMP=1，`--resume`）、`scripts/agg_val.py`
+（mean±sd、配对 bootstrap 边际；通配符必须是 `_s[0-9]*` 以免混入 `_static`）、`scripts/table_numbers.py`、
+`report/make_fig_ksweep.py`。CIFAR 缓存从 `../Assignment 2/tmp/dataset_cache/` 复制到本仓库 `tmp/`。
+
+**算力教训**：8 个 MNIST worker + 3 个 CIFAR worker 把空闲内存压到 0.5 GB，宿主进程以“内存不足”整体杀掉了
+队列（CIFAR 作业每个约 1.3 GB）；改为脱离宿主的 detached 进程，CIFAR 2 worker + MNIST 5 worker，全部
+约 540 项作业在 02:00 前完成，零失败。
+
+**held-out 结果（split-MNIST，K=1000）**：DER++ 91.5±0.5 与本系统 91.6±0.3 打平（配对 +0.1 [−0.3,+0.4]），
+单遍 90.1 对 91.8；ER-ACE 90.2 / 单遍 88.5；A-GEM 68.5 / 46.8。六种子补全后：random rotation 91.1±0.7 /
+92.3、mirror 79.4±3.5 / 90.2±3.0、soft 89.9 / 84.6、窄架构夜间 88.5±2.8（配对 +3.1 [+1.4,+5.4]）、unmasked
+static 93.8±5.0（一个种子 83.5）、readout-only static 81.2±2.5。单遍整列：silent 86.4、rot_noiso 91.5、
+unmasked 83.0±14.9、random 90.5、readout 25.1、mirror 80.9、soft 87.8、夜间同架构 76.9±3.4、窄 71.5、
+BP+ER 88.6。K 轴：本系统 83.0 / 91.6 / 93.8（K=200/1000/5000），窄夜间 82.7 / 88.5 / 88.0，BP+ER 68.5 /
+88.8 / 95.2，DER++ 77.1 / 91.5 / 95.7。CIFAR-10（六种子）：本系统 28.4±0.8，夜间 25.1±2.7，BP+ER 24.6，
+unmasked 14.6，无回放 16.3；**DER++ 30.7±0.8、ER-ACE 31.6±1.0 领先本系统 2–3 点**，单遍 ER-ACE 29.5 >
+本系统 26.0 > BP+ER 25.8 > DER++ 24.4。第二划分（3 种子）全部复现排序。
+
+**稿件**（`report/workshop/cl4fmagents.tex`，正文 7 页，附录 A–H，零 overfull，零 Type 3）：摘要压到 200 词；
+贡献三条（isolation 保证、rotation、无离线相位评估）；Internal control 段、Fig 1(b)、trigger 段、activity
+fraction 段、feature CIFAR、能耗、Section 5（controller/depth）全部移出正文（分别进附录 E、D、G 或删除）；
+Algorithm 1 移入方法节；表 1 压为 15 行 × 三列（sequential / i.i.d. / single pass）并新增 DER++、ER-ACE、
+A-GEM 行；新增表 2（CIFAR 三列）、图 2 右面板（K 轴）；命名统一为 "isolated replay + rotation" / "offline
+rehearsal"；正文不再出现开发阶段数字（唯一保留的 substrate 成本句标注 "in development"）；Limitations
+如实写 DER++ 打平、CIFAR 落后。preprint.tex 未动。
+
+**Preprint 同步（09-08 晨）**：`report/preprint.tex` 保留全部实验章节（gate、trigger、activity fraction、
+energy、controller、depth、5% 附录），只更新数字与结论：摘要、Related work（DER++/ER-ACE/A-GEM 一句）、
+Setup（基线与种子说明）、Cost accounting（基线调参网格与选中格、配对边际）、5.1（六种子、基线、新增
+"Buffer size" 段与 `fig_ksweep.pdf`、第二划分）、5.3（mirror 79.4、soft 84.6）、5.5（static 价格 1.3）、
+5.6 CIFAR（六种子 + DER++/ER-ACE/A-GEM + 单遍）、表 1（全列六种子、新增三行基线）、component table
+解读、frontier 图与图注（非支配点现为 bout gate 与 silent mask）、controller 表 CIFAR 格、Discussion
+（前提条件改为"可逐突触掩码的更新"，Limitations 写 DER++/CIFAR）、Conclusion、附录 K200/单遍/表 5。
+24 页，零错误，零 Type 3。
+
+### BP 底座上的机制检验：BP + k-WTA 下的 ER / isolated replay × rotation（2026-09-08 上午）
+
+**动机**：预答审稿人"机制是否只活在 local learner 上"。`src/run_seq.py` 新增 `BPKWTA`（带抑制掩码的 k-WTA
+backprop MLP）、`_adam_masked`（权重变化与 Adam 矩都限制在 mask 内）与 `run_bp_local`（与 `run_local`
+完全相同的调度：waking batch 16、每步一个 16 样本 replay micro-batch、K=1000 reservoir、readout 不掩码、
+输入层视为常醒），配置 `bpk_{er,iso,er_rot,iso_rot}_lr*`（`_static`、`_stream` 变体）。lr 在开发集上
+扫 {1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3}，按 sequential 最高选：ER 3e-5（92.4），其余三格 1e-4
+（er_rot 92.9、iso_rot 92.9、iso 84.3）。
+
+**held-out（六种子；sequential / static / single pass）**：ER 91.7±0.4 / 97.2 / 89.3；isolated 84.7±2.6 /
+97.6 / 81.9；ER+rotation 92.2±0.3 / 96.7 / 92.7；isolated+rotation 92.1±0.3 / 96.6 / 92.8。
+配对：rotation 对最优 ER +0.5 [+0.2,+0.8]（单遍 +3.4 [+2.8,+4.0]）；isolation 在 rotation 之上 −0.1
+[−0.3,+0.1]（打平，与 local learner 上的 +0.1 一致）；单靠自然静默的 isolation −7.0（BP 上有害，
+与 local learner 上的 +2.6 相反；asleep 比例 0.63 / 0.81）；rotation 的静态代价 0.5–0.9 点。
+BP+k-WTA+rotation 92.2 高于 DER++ 91.5（+0.7 [+0.3,+1.1]）与 local learner 91.6。另注：同一调度下的
+BP+k-WTA+ER（91.7）明显高于主表里 batch-256 协议的 BP+ER（88.8），小 batch 加逐步微批回放本身就
+帮了 BP。是否进稿待定。
+
+**进稿（09-08 午）**：用户决定收录。Workshop：Results 新增 "The mechanism on a backprop learner" 段与表 3
+（四行三列），摘要、贡献三、协议、Discussion 前提段、附录 C 调参与表 5 同步；preprint：新增 5.7 小节
+"The mechanism on a backprop learner"（含 lr 列、与 local learner / DER++ 的参考行、asleep 比例、
+"调度本身值三点"与"无 rotation 只能慢走"两条读法），摘要、Setup 基线 (v)、Cost accounting、Discussion、
+Limitations、Conclusion、表 5 同步。两稿标题改为 "Replay in the Silent Degrees of Freedom: Continual
+Learning Without an Offline Phase"（preprint 页眉短标题同改），并删去方法节里"during inference 指流的步骤
+之间、不主张异步执行或服务延迟"的防御句。
