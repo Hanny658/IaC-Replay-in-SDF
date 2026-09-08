@@ -824,3 +824,6 @@ BP+k-WTA+ER（91.7）明显高于主表里 batch-256 协议的 BP+ER（88.8）�
 Limitations、Conclusion、表 5 同步。两稿标题改为 "Replay in the Silent Degrees of Freedom: Continual
 Learning Without an Offline Phase"（preprint 页眉短标题同改），并删去方法节里"during inference 指流的步骤
 之间、不主张异步执行或服务延迟"的防御句。
+**措辞修正（09-08 午）**：BP+k-WTA+rotation 与 DER++ 的比较跨协议（微批调度 vs batch 256，调度本身值约 3 点），
+两稿摘要、结果段、Discussion、Conclusion 一律改为"达到 local learner 与 DER++（其自身协议下）的水平"，
+不再写 "above DER++"。
