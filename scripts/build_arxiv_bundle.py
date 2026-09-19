@@ -6,29 +6,44 @@ Writes report/arxiv_bundle/ (gitignored) containing main.tex, arxiv.sty, figs/ a
 arxiv_bundle.zip, plus arxiv_metadata.txt with the fields the submission form asks for.
 
 The working copy of preprint.tex is kept anonymous, because the workshop version is under
-double-blind review and the public repository mirrors it.  This script produces the
+double-blind review and the repository feeds an anonymous mirror.  This script produces the
 de-anonymised submission copy: it prepends \\pdfoutput=1 (so arXiv runs pdflatex), fills in
 the author block, and swaps the anonymous code link for the public one.  Nothing else in the
 document is altered.
+
+The identifying values are NOT stored in the repository.  They are read from
+report/arxiv_private.json (gitignored), which must look like
+
+    {"authors": ["First Author", "email@example.org", "Affiliation, Country"],
+     "code_url": "https://github.com/<owner>/<repo>"}
+
+Each "authors" entry becomes one line of the \\author block.
 """
+import json
 import os
 import re
 import shutil
+import sys
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "report", "preprint.tex")
 OUT = os.path.join(ROOT, "report", "arxiv_bundle")
+PRIVATE = os.path.join(ROOT, "report", "arxiv_private.json")
 
-AUTHOR_BLOCK = """\\author{%
-  Zhang Yanhai \\\\
-  zh0010ai@e.ntu.edu.sg \\\\
-  Nanyang Technological University, Singapore}"""
 ANON_AUTHOR = """\\author{%
   Anonymous author(s)\\\\
   Affiliation withheld for double-blind review}"""
 ANON_CODE = "https://anonymous.4open.science/r/IaC-CL-with-no-offline"
-PUBLIC_CODE = "https://github.com/Hanny658/IaC-Replay-in-SDF"
+
+
+def load_private():
+    if not os.path.isfile(PRIVATE):
+        sys.exit(f"missing {PRIVATE}; see the module docstring for its format")
+    cfg = json.load(open(PRIVATE, encoding="utf-8"))
+    lines = cfg["authors"]
+    block = "\\author{%\n" + " \\\\\n".join(f"  {l}" for l in lines) + "}"
+    return block, lines, cfg["code_url"]
 
 # The arXiv abstract field takes at most 1,920 characters, so the form gets this condensed
 # version while the PDF keeps the full one.  Authored by hand; keep it in sync with the paper.
@@ -54,12 +69,13 @@ def detex(s):
 
 def main():
     tex = open(SRC, encoding="utf-8").read()
+    author_block, author_lines, public_code = load_private()
 
     # --- de-anonymise
     assert tex.count(ANON_AUTHOR) == 1, "author block not found; was preprint.tex edited?"
-    tex = tex.replace(ANON_AUTHOR, AUTHOR_BLOCK)
+    tex = tex.replace(ANON_AUTHOR, author_block)
     assert tex.count(ANON_CODE) == 1, "anonymous code link not found"
-    tex = tex.replace(ANON_CODE, PUBLIC_CODE)
+    tex = tex.replace(ANON_CODE, public_code)
     assert not tex.lstrip().startswith("\\pdfoutput"), "pdfoutput already present"
     tex = "\\pdfoutput=1\n" + tex
 
@@ -89,9 +105,7 @@ def main():
 {title}
 
 AUTHORS (as in main.tex)
-Zhang Yanhai
-zh0010ai@e.ntu.edu.sg
-Nanyang Technological University, Singapore
+{chr(10).join(author_lines)}
 
 ABSTRACT FOR THE ARXIV FORM (condensed to the 1,920-character limit; the PDF keeps the full abstract)
 {FORM_ABSTRACT}
@@ -103,7 +117,7 @@ KEYWORDS
 {keywords}
 
 COMMENTS (suggested)
-{pages} pages, {n_fig} figures. Code: {PUBLIC_CODE}
+{pages} pages, {n_fig} figures. Code: {public_code}
 
 CATEGORIES (suggested)
 {CATEGORIES}

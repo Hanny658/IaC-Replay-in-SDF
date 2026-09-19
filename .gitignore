@@ -12,3 +12,4 @@ report/*.synctex.gz
 report/*.bbl
 report/*.blg
 report/arxiv_bundle/
+report/arxiv_private.json

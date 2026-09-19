@@ -27,8 +27,10 @@ SERIES = [  # label, colour, marker, configs at K = 200 / 1000 / 5000
     ("offline rehearsal (narrow learner)", "C3", "s",
      ["ctx_nrem_rand_200", "ctx_nrem_rand_1000", "ctx_nrem_rand_5000"]),
     ("BP + ER", "C7", "^", ["bp_er_200", "bp_er_1000", "bp_er_5000"]),
+    # K = 1000 is the DER++ cell selected on the development split (bp_derpp_K200 / K5000 are
+    # the same cell with the buffer changed); override with DERPP_K* to plot another cell.
     ("BP + DER++", "C2", "D", [os.environ.get("DERPP_K200", "bp_derpp_K200"),
-                              os.environ.get("DERPP_K1000", "bp_derpp_K1000"),
+                              os.environ.get("DERPP_K1000", "bp_derpp_a0.03_b1.0_w512_ce"),
                               os.environ.get("DERPP_K5000", "bp_derpp_K5000")]),
 ]
 
