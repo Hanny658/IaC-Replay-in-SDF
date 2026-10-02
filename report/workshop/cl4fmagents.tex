@@ -556,6 +556,27 @@ skip synapses, holds a five-hidden-layer network at the two-layer level is repor
 Appendix~\ref{app:controller}. Code can be found at
 \url{https://anonymous.4open.science/r/IaC-CL-with-no-offline}
 
+% ================================================================ 6
+\section{Conclusion}
+\label{sec:conclusion}
+
+Consolidation does not require an offline phase. Replay written into the degrees of freedom
+that the current batch leaves unused holds the hidden computation on that batch invariant,
+exactly for silent and suppressed units, and the resulting learner matches or exceeds the
+best offline rehearsal schedule we could tune on two held-out splits while replaying about
+twice its samples. The two ingredients play different roles. Refractory rotation supplies
+the accuracy, and it is the part that transfers: on a backprop learner with the same sparse
+layers it adds half a point in five epochs and three in a single pass. Isolation supplies
+the guarantee at no cost on top of rotation, and it is what keeps the system graceful at
+two-sample replay batches, where unmasked replay fails severely in half the seeds. The
+margins are widest where an agent is most constrained, at a buffer of two hundred samples
+and in a single pass over the stream, and they close against the cross-entropy backprop
+references on raw CIFAR-10, where the local learner rather than the schedule is the limit.
+What the construction asks of an architecture is modest and checkable: a batch must leave
+most units silent, and the replay update must be maskable synapse by synapse. Whether that
+survives the batch sizes and the weight sharing of convolutional and attention stacks is the
+measurement we would make next.
+
 \clearpage
 \bibliographystyle{plainnat}
 \begin{thebibliography}{99}\small
