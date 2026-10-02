@@ -1245,9 +1245,28 @@ Under these prerequisites, consolidation can run in the silent
 degrees of freedom between the
 steps of the stream, with no separate offline phase, under a conditional guarantee on the
 computation in use, and at a higher total compute ($6\times$ the night's wall-clock,
-unoptimised). Top-$k$ routed mixture-of-experts layers expose, per token, the experts a
-token leaves silent, but whether the routes of a whole batch leave enough experts idle is a
-measurement (load balancing pushes against it).
+unoptimised).
+
+Three things decide whether the prerequisites survive on a modern stack, and all three can
+be measured before any continual-learning run. The first is the waking batch. The awake set
+is a union over its samples, so the channel narrows as the batch grows: at the $10\%$
+fraction and independent activity, $16$ samples would leave $18.5\%$ of a layer silent,
+whereas the measured fractions run from $0.51$ to $0.83$ across layers and learners, because
+units specialise and our batches are drawn from one task at a time. Our waking batch holds $16$ samples; what the guarantee has
+to protect in a deployed agent is the handful of observations it is serving, not the batch
+that training throughput would prefer, and defining the mask on the served inputs keeps the
+union from growing with the training batch. The second is weight sharing. A convolutional
+filter is shared across positions and an attention or feed-forward weight across tokens, so
+a synapse is invisible only if its unit is silent at every position and every token, which
+asks for channel-level or neuron-level sparsity rather than the elementwise kind. The third
+is normalisation. A normaliser that pools over the units \kwta{} selects makes one asleep
+unit's pre-activation visible to all of them and voids
+Proposition~\ref{prop:post}; the feed-forward block of a pre-norm transformer does not
+normalise over its hidden units, and per-channel batch normalisation does not pool across
+channels, although replay passes would still move its running statistics. Top-$k$ routed
+mixture-of-experts layers expose, per token, the experts a token leaves silent, but whether
+the routes of a whole batch leave enough experts idle is a measurement, since load balancing
+pushes against it.
 
 \paragraph{Correspondence with biology.}
 We treat the biology as a motivating analogy, not as a claim of mechanistic equivalence. The
@@ -1272,7 +1291,22 @@ epochs per task; a single pass keeps the lead (Table~\ref{tab:ablation},
 Appendix~\ref{app:probes}). All results are at MLP scale on MNIST/CIFAR variants, with six
 seeds on the component table, the buffer-size axis and the CIFAR-10 comparison and three
 elsewhere. The backpropagation references are external references rather than a
-state-of-the-art claim. DER++ ties the system on split-MNIST and trails it only in the
+state-of-the-art claim, and they run under their own batch-$256$ protocol. Since the
+micro-batch schedule is itself worth about three points to backpropagation
+(Section~\ref{sec:bpk}), the $2.8$ points over BP+ER in Table~\ref{tab:ablation} mix the
+schedule with the mechanism; the within-schedule reading is Table~\ref{tab:bpk}, where
+rotation adds $0.5$ points in five epochs and $3.4$ in a single pass and isolation adds the
+guarantee at no cost. We did not re-run DER++ or ER-ACE under the micro-batch schedule, so
+the comparison with them crosses schedules in both directions.
+A second caveat concerns what the guarantee covers. It holds for the hidden computation of
+the current batch, not for the output: the readout stays plastic by design, so a waking
+prediction still changes on $0.32\%$ of samples per update, and on $0.001\%$ once the
+readout is isolated as well. Final accuracy is not the quantity that invariance buys, and in
+these experiments it surfaces only at two-sample replay batches, where the unmasked control
+fails severely in half the seeds. The direct measurement would be the stability of the
+predictions an agent is serving while it consolidates, logged during the stream rather than
+at the end of it, and we did not make it.
+DER++ ties the system on split-MNIST and trails it only in the
 single pass; on raw CIFAR-10 ER-ACE and DER++ lead it by two to three points, and BP+ER
 keeps a $0.5$-point lead on feature-based CIFAR with both sides at their best, a lead the
 substrate decomposition attributes to dense activation rather than to backpropagation
@@ -1281,9 +1315,12 @@ level; the contribution is consolidation with the live computation held invarian
 loss on split-MNIST against the strongest such reference and with the largest margins at
 small buffers and in a single pass. On the backprop learner the isolation guarantee is free
 only together with the rotation; isolation alone costs seven points there
-(Section~\ref{sec:bpk}). Rotation keeps a $1$--$2$-point static price at the
-$10\%$ fraction that no gate we
-tested removes without a sequential cost (Section~\ref{sec:ablation}). The same-substrate
+(Section~\ref{sec:bpk}). Rotation keeps a static price of $1.3$ points on the local learner
+and $0.5$ to $0.9$ on the backpropagation one at the $10\%$ fraction, which no gate we
+tested removes without a sequential cost (Section~\ref{sec:ablation}). The system also makes
+$35\times$ the night's updates at $6\times$ its wall-clock, in an implementation that
+materialises a mask which is in fact an outer product of two indicator vectors, so the
+figure bounds the idea's cost loosely from above. The same-substrate
 offline night is highly variable across seeds ($89.0\pm3.5$ on the reported split,
 $91.5\pm0.5$ on the second, where it trails the full system by only $0.3$), which we report
 but do not explain. Finally, the novelty claims rest on our own literature search (August

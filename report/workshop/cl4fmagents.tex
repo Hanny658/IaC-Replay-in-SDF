@@ -532,27 +532,40 @@ synapse by synapse. Nothing in Propositions~\ref{prop:pre} and~\ref{prop:post} d
 the update is computed; we studied a local learner because its sparse codes and local rules
 make both prerequisites hold by construction, and Table~\ref{tab:bpk} shows the same
 schedule on a backprop learner with \kwta{} layers: rotation transfers, isolation costs
-nothing on top of it, and isolation alone does not transfer. Top-$k$ routed
-mixture-of-experts layers expose, per token, the experts a token leaves silent; whether the
-routes of a whole batch leave enough experts idle is a measurement, since load balancing
-pushes against it. Under these prerequisites, consolidation can run in the silent degrees of
-freedom between the steps of the stream, with no separate offline phase, under a conditional
-guarantee on the computation in use, at a higher total compute ($6\times$ the night's
-wall-clock, unoptimised). We treat the biology as analogy, not as mechanistic equivalence;
-the refractory rule mirrors the ON/OFF finding of \citet{driessen2026}, and the dissociation
-of triggers in Appendix~\ref{app:budget} is a testable prediction.
+nothing on top of it, and isolation alone does not transfer. Two things decide whether the
+prerequisites survive at scale. The awake set is a union over the waking batch, so the
+channel narrows as that batch grows; ours holds $16$ samples, and for an agent the set that
+must be protected is the few observations it is serving rather than the batch that training
+throughput would prefer. Weights shared across positions or tokens are invisible only if the
+unit is silent at every position and every token, which asks for channel-level or
+neuron-level sparsity and for normalisation that does not couple the units \kwta{} selects.
+Top-$k$ routed mixture-of-experts layers expose, per token, the experts a token leaves
+silent; whether the routes of a whole batch leave enough experts idle is a measurement, since
+load balancing pushes against it. We treat the biology as analogy, not as mechanistic
+equivalence; the refractory rule mirrors the ON/OFF finding of \citet{driessen2026}, and the
+dissociation of triggers in Appendix~\ref{app:budget} is a testable prediction.
 
 \paragraph{Limitations.} All results are at MLP scale on MNIST and CIFAR-10, with six seeds
-on held-out training data and three on a second held-out split. The lead over the
-best offline night is $2.6$ points on the first split and $0.3$ on the second, where the
-night's seed variance vanished; the leads over the interleaved-replay references hold on
-both. DER++ ties the system on split-MNIST and trails it only in the single pass, and on raw
-CIFAR-10 ER-ACE and DER++ lead it by two to three points, so the comparison with interleaved
-replay is not a claim of a new accuracy level; the contribution is consolidation with the live
-computation held invariant, at no loss on split-MNIST against the strongest such reference.
-Rotation keeps a static price of $1$--$2$ points at this activity fraction. The rule's synaptic decay is tuned once per dataset; a
-drive-referenced controller that replaces it by one ratio target and, with locally learned
-skip synapses, holds a five-hidden-layer network at the two-layer level is reported in
+on held-out training data and three on a second held-out split. Two caveats bound how the
+margins should be read. First, the backprop references run under their own batch-$256$
+protocol, and the micro-batch schedule is itself worth about three points to backprop
+(Table~\ref{tab:bpk}), so the $2.8$ points over BP+ER in Table~\ref{tab:ablation} mix
+schedule with mechanism; the within-schedule reading is Table~\ref{tab:bpk}, where rotation
+adds $0.5$ points in five epochs and $3.4$ in a single pass and isolation adds the guarantee
+at no cost. We did not re-run DER++ or ER-ACE under the micro-batch schedule. Second, the
+guarantee covers the hidden computation and not the output: the readout stays plastic, so a
+waking prediction still changes on $0.32\%$ of samples per update, and on $0.001\%$ when the
+readout is isolated as well. Final accuracy is not the quantity that guarantee buys, and in
+our results it surfaces only at two-sample replay batches; the direct measurement, prediction
+stability during online operation, is one we did not make. The lead over the best offline
+night is $2.6$ points on the first split and $0.3$ on the second; DER++ ties the system on
+split-MNIST, and on raw CIFAR-10 ER-ACE and DER++ lead it by two to three points. Rotation
+keeps a static price of $1.3$ points on the local learner and $0.5$ to $0.9$ on the backprop
+one, and the system makes $35\times$ the night's updates at $6\times$ its wall-clock, in an
+implementation that materialises a mask which is in fact an outer product of two indicator
+vectors. The rule's synaptic decay is tuned once per dataset; a drive-referenced controller
+that replaces it by one ratio target and, with locally learned skip synapses, holds a
+five-hidden-layer network at the two-layer level is reported in
 Appendix~\ref{app:controller}. Code can be found at
 \url{https://anonymous.4open.science/r/IaC-CL-with-no-offline}
 
