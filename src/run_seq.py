@@ -1128,6 +1128,19 @@ for _n, _src in {"derpp": "mb_bp_derpp_lr3e5", "erace": "mb_bp_erace_lr3e4", "er
     CONFIGS[f"mb_bp_{_n}_stream"] = dict(CONFIGS[_src], epochs=1)
 
 
+# 29 (camera-ready): does holding the live computation invariant show up in what the learner
+# does while it is learning, and not only in the accuracy it ends with?  Same cells as the
+# ablation square, with the retention curve logged every 50 waking batches, the accuracy of
+# each incoming batch recorded before the learner trains on it, and the per-step drift of the
+# waking prediction across the replay update.
+for _n, _src in {"ours": "g16_sgd_refr_s10_w512", "rot_noiso": "g26_ctrl_rot_noiso",
+                 "unmasked": "g17_sgd_none_s10", "silent": "g16_sgd_silent_s10_w512",
+                 "night": "g17_night_s10", "noreplay": "g17_ctx_none_s10"}.items():
+    CONFIGS[f"g29_stab_{_n}"] = dict(CONFIGS[_src], eval_every=50, diag_drift=True)
+for _n, _src in {"derpp": "mb_bp_derpp_lr3e5", "er": "mb_bp_er_lr3e5"}.items():
+    CONFIGS[f"g29_stab_{_n}"] = dict(CONFIGS[_src], eval_every=50)
+
+
 def n_classes(cfg):
     return 100 if str(cfg.get("dataset", "")).startswith("cifar100") else 10
 
@@ -1547,6 +1560,30 @@ def run_bp_local(config, seed, epochs_per_task):
     return out
 
 
+def predict_t(model, net, X):
+    """29: logits for an already-tensor batch, without disturbing the training state."""
+    if model == "bp":
+        return net(X)
+    return net.forward(X)[0][-1]
+
+
+def _retention(net, Xte, yte, tasks, ti, gstep, model="ctx"):
+    """29: accuracy on the evaluation set restricted to the classes seen so far, and per task.
+    Evaluated with the suppression mask off, as the end-of-training numbers are."""
+    seen = np.zeros(len(yte), dtype=bool)
+    for c in tasks[:ti + 1]:
+        seen |= np.isin(yte, c)
+    was_training, was_suppress = getattr(net, "training", False), getattr(net, "suppress", None)
+    if model != "bp":
+        net.suppress = None
+    pred = predict(model, net, Xte[seen]).argmax(1)
+    yv = yte[seen]
+    accs = [float((pred[np.isin(yv, c)] == yv[np.isin(yv, c)]).mean()) for c in tasks[:ti + 1]]
+    if model != "bp":
+        net.suppress, net.training = was_suppress, was_training
+    return [gstep, ti, float((pred == yv).mean()), *accs]
+
+
 def predict(model, net, X):
     with torch.no_grad():
         if model == "bp":
@@ -1558,6 +1595,7 @@ def predict(model, net, X):
 # ------------------------------------------------------------------ protocol
 def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
     cfg = CONFIGS[config]
+    ev_every, eval_trace, online_log, gstep = int(cfg.get("eval_every", 0)), [], [], 0  # 29
     batch = cfg.get("batch", batch)  # 28: per-config waking batch, for schedule-matched baselines
     model, K = cfg["model"], cfg.get("buffer", 0)
     policy, replay, static = cfg.get("policy", "random"), cfg.get("replay", None), cfg.get("static", False)
@@ -1621,6 +1659,12 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
                         Xb_all, yb_all = Xb, yb
                 else:
                     Xb_all, yb_all = Xb, yb
+                if ev_every:
+                    with torch.no_grad():
+                        online_log.append(float((predict_t(model, net, Xb).argmax(1) == yb).float().mean()))
+                    gstep += 1
+                    if gstep % ev_every == 0:
+                        eval_trace.append(_retention(net, Xte, yte, tasks, ti, gstep, model=model))
                 if model == "bp" and replay in BP_BASELINES and K:  # 27: DER++ / ER-ACE / A-GEM
                     out, surprise = bp_baseline_step(replay, net, opt, Xb, yb, onehot, buf, batch, cfg)
                     buf.offer(Xb, yb, surprise, zb=out if replay == "derpp" else None)
@@ -1671,6 +1715,8 @@ def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
     forgetting = float(np.mean([acc_matrix[j, j] - acc_matrix[T - 1, j] for j in range(T - 1)])) if T > 1 else 0.0
     out = dict(config=config, seed=seed, model=model, buffer=K, policy=policy if K else None, replay=replay if K else None,
                static=static, final_acc=final_acc, forgetting=forgetting, acc_matrix=acc_matrix.tolist(),
+               eval_trace=(eval_trace or None), online_acc=(float(np.mean(online_log)) if online_log else None),
+               online_log=([float(v) for v in online_log] if online_log else None),
                buffer_classes=buf.class_counts(), fit_s=time.time() - t0)
     globals()["LAST_NET"] = net
     if model == "ctx":
@@ -1886,6 +1932,12 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
     # (max |d output|, fraction of predictions changed, fraction of samples whose top hidden
     # code changed at all, per-layer fraction of asleep units the update woke).
     diag, drift_log, sup_wake = bool(cfg.get("diag_drift")), [], None
+    # 29: continual evaluation.  `eval_every` waking batches, accuracy on the evaluation set
+    # restricted to the classes seen so far (suppression off, as at the end of training), which
+    # gives the retention curve and with it the stability gap; and, every batch, the accuracy of
+    # the prediction the learner makes on the incoming batch BEFORE it learns from it, which is
+    # what an agent acting on the stream would have got right.
+    ev_every, eval_trace, online_log = int(cfg.get("eval_every", 0)), [], []
     net.suppress = None
     gstep = 0  # waking batches since the start of the stream (cadence must not reset per epoch)
     Sr = [None] + [torch.zeros(s) for s in hidden]  # 10A: per-unit rest pressure (discharged by rest)
@@ -1900,6 +1952,11 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                 Xb, yb = Xt[idx], yt[idx]
                 net.training = True
                 x, a, eps = net.relax(Xb, onehot(yb), 0, 0.0)
+                if ev_every:
+                    # the free prediction of the waking pass: relax() overwrites x[L] with the
+                    # target, so the readout is recomputed from the (unclamped) activities
+                    with torch.no_grad():
+                        online_log.append(float((net.mu(net.L, a[net.L - 1]).argmax(1) == yb).float().mean()))
                 sup_wake = net.suppress  # the suppression this batch was inferred under (H4 diag)
                 if mask_policy == "refractory":  # what fired now sits out the next competition
                     net.suppress = [None] + [(a[l] > 0).float().mean(0).gt(0).float() for l in range(1, net.L)]
@@ -2141,6 +2198,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                         if gate == "pressure":  # the sleep the asleep units just had discharges their pressure
                             for l in range(1, net.L):
                                 S[l] = S[l] * (1.0 - delta * (1.0 - awake[l]))
+                if ev_every and gstep % ev_every == 0:
+                    eval_trace.append(_retention(net, Xte, yte, tasks, ti, gstep))
             if night and K:  # 8B combo: the concentrated night on top of the daytime trickle
                 net.training = False
                 net.suppress = None
@@ -2178,6 +2237,8 @@ def run_local(config, seed, epochs_per_task, batch_wake, batch_replay, nrem_gain
                ach_frac=(float(np.mean(ach_on)) if ach_on else None),
                kp_eff=([None if v is None else float(v) for v in net.kp_eff] if getattr(net, "kp_eff", None) else None),
                gate_signal=(float(np.mean(gate_log)) if gate_log else None),
+               eval_trace=(eval_trace or None), online_acc=(float(np.mean(online_log)) if online_log else None),
+               online_log=([float(v) for v in online_log] if online_log else None),
                drift=(np.mean(drift_log, axis=0).tolist() if drift_log else None),
                drift_p99=(float(np.percentile([d[0] for d in drift_log], 99)) if drift_log else None),
                drift_n=len(drift_log), fit_s=time.time() - t0)

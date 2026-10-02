@@ -744,6 +744,79 @@ surprise triggering fires no events in this regime.}
 \label{fig:batch}
 \end{figure}
 
+\subsection{Behaviour during the stream}
+\label{sec:online}
+Final accuracy says what a learner ends up knowing, not what it was doing while it learnt,
+and the invariance of Section~\ref{sec:isolation} is a statement about the latter. We
+therefore ran the cells of Table~\ref{tab:ablation} again with three measurements taken
+along the way (Table~\ref{tab:online}, Figure~\ref{fig:stability}). \emph{Online} accuracy
+is scored on each incoming batch before the learner trains on it, which is what an agent
+acting on the stream would have got right. \emph{Anytime} and \emph{worst} accuracy come
+from evaluating every $50$ waking batches on the classes seen so far, with the suppression
+mask off as at the end of training. The \emph{stability gap} is the drop from the accuracy
+on the already-learnt tasks just before a task switch to its lowest point within the next
+thousand waking batches, averaged over the four switches \citep{delange2023}.
+\emph{Churn} is the fraction of the current waking batch whose prediction the replay update
+changes, the quantity the Remark in Section~\ref{sec:isolation} reports for the default
+system and which we now have for every variant.
+
+\begin{table}[t]
+\centering\small
+\caption{\textbf{Measured while the stream runs} (split-MNIST, $K{=}1000$, held-out split;
+six seeds for the first two rows, three for the rest). Churn is undefined for schedules
+that do not replay during the stream.}
+\label{tab:online}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+ & Online & Anytime & Worst & Stability gap & Churn \\
+\midrule
+isolated replay $+$ rotation & $97.7\pm0.1$ & $94.9\pm0.3$ & $66.2\pm4.4$ & $\mathbf{1.5\pm0.3}$ & $\mathbf{0.33\pm0.04}$ \\
+rotation, unmasked replay & $97.8\pm0.1$ & $95.4\pm0.1$ & $69.7\pm2.9$ & $2.3\pm1.1$ & $0.62\pm0.06$ \\
+isolated replay, no rotation & $97.6\pm0.1$ & $94.1\pm0.3$ & $63.9\pm1.9$ & $16.9\pm1.8$ & $0.30\pm0.03$ \\
+unmasked, no rotation & $95.9\pm1.3$ & $92.9\pm1.4$ & $32.9\pm26.0$ & $15.9\pm7.3$ & $4.39\pm2.15$ \\
+offline rehearsal & $87.6\pm0.2$ & $83.3\pm0.7$ & $33.1\pm4.9$ & $38.4\pm0.2$ & --- \\
+no replay & $91.3\pm0.7$ & $43.0\pm0.1$ & $18.7\pm0.2$ & $51.8\pm0.0$ & --- \\
+BP $+$ DER++, same schedule & $97.0\pm0.1$ & $\mathbf{96.6\pm0.1}$ & $\mathbf{72.7\pm0.1}$ & $2.0\pm0.1$ & --- \\
+BP $+$ ER, same schedule & $97.5\pm0.1$ & $96.0\pm0.2$ & $72.6\pm0.8$ & $3.3\pm0.6$ & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/fig_stability.pdf}
+\caption{\textbf{Left:} accuracy on the classes seen so far, measured every $50$ waking
+batches; vertical lines are task switches and bands are one standard deviation over seeds.
+Offline rehearsal recovers the old tasks only when its night arrives, so for most of a task
+the stream is served by a network that has not yet been repaired. \textbf{Right:} the
+fraction of the current batch whose prediction the replay update changes, on a logarithmic
+axis, for the four cells of the isolation and rotation square; every seed is drawn.}
+\label{fig:stability}
+\end{figure}
+
+The two components separate here as cleanly as they do on final accuracy, but along
+different axes. Isolation is what holds the served prediction still. The replay update
+changes the prediction on $0.33\%$ of the current batch with the mask and on $4.39\%$
+without it, and the mask halves the rate even on top of rotation ($0.62\%$; seed-paired
+$0.29$ $[+0.26,+0.34]$), which is the practical content of
+Propositions~\ref{prop:pre}--\ref{prop:post}: the cells that share the guarantee share the
+churn rate, and the cells that do not are one to two orders of magnitude noisier. Rotation
+is what keeps the retention curve flat. The stability gap is $1.5$ points with rotation and
+about $16$ without it, in both the masked and the unmasked column, and in the figure the
+rotating curves recover within a few hundred batches of a task switch while the others sag
+for the rest of the task. The offline night is the extreme case of the same effect: it
+repairs the old tasks only when it arrives, so it carries a $38$-point gap and serves the
+stream at $87.6\%$ against the system's $97.7\%$, which is the cost of an offline phase
+stated in the currency an agent cares about.
+
+The honest other half is that the two cells without the mask are better on the retention
+axes themselves. Rotation with unmasked replay keeps $0.5$ points more anytime accuracy and
+$3.5$ more in the worst case than the isolated system, and DER++ under the same schedule
+keeps $1.7$ and $6.5$ more, while serving the stream slightly less accurately ($97.0$
+against $97.7$). Writing replay everywhere repairs the old tasks faster, and declining to
+do so is what the guarantee costs. Which trade an agent should take depends on whether the
+predictions it is making in the meantime are acted on.
+
 \subsection{The direction of protection matters, and the least optimiser state suffices}
 \label{sec:direction}
 Three controls sharpen the construction. First, \emph{mirror isolation} implements the
@@ -1327,12 +1400,11 @@ report both because neither protocol is neutral to all methods, and we did not r
 local learner itself at batch $256$.
 A second caveat concerns what the guarantee covers. It holds for the hidden computation of
 the current batch, not for the output: the readout stays plastic by design, so a waking
-prediction still changes on $0.32\%$ of samples per update, and on $0.001\%$ once the
-readout is isolated as well. Final accuracy is not the quantity that invariance buys, and in
-these experiments it surfaces only at two-sample replay batches, where the unmasked control
-fails severely in half the seeds. The direct measurement would be the stability of the
-predictions an agent is serving while it consolidates, logged during the stream rather than
-at the end of it, and we did not make it.
+prediction still changes on $0.33\%$ of samples per update, and on $0.001\%$ once the
+readout is isolated as well. Final accuracy is not the quantity that invariance buys, which
+is why Section~\ref{sec:online} measures the served prediction directly; what that section
+cannot settle is how much a $0.33\%$ churn rate matters to a downstream controller, since
+nothing here acts on its own predictions.
 DER++ ties the system on split-MNIST and trails it only in the
 single pass; on raw CIFAR-10 ER-ACE and DER++ lead it by two to three points, and BP+ER
 keeps a $0.5$-point lead on feature-based CIFAR with both sides at their best, a lead the
@@ -1389,7 +1461,12 @@ stream is using. Its accuracy value is $2.6$ points without rotation and $0.1$--
 it (Table~\ref{tab:ablation}). Once the coalition alternates, the live units tolerate
 unmasked replay down to four-sample micro-batches; what isolation adds is the guarantee that
 they need not, and, at two-sample batches where that tolerance runs out, graceful
-degradation where the unmasked control failed severely in half the seeds. With isolated
+degradation where the unmasked control failed severely in half the seeds. Measured while
+the stream runs rather than at its end, that guarantee has a number of its own: the replay
+update moves the prediction on the batch being served an order of magnitude less often than
+unmasked replay does, while the rotation is what holds the retention curve flat and the
+offline night, which repairs the old tasks only when it arrives, serves the stream ten
+points lower than either (Table~\ref{tab:online}). With isolated
 replay, refractory rotation of the active coalition, homeostatic burst triggering and a
 relative-novelty gate on the rotation itself, a biologically constrained learner
 consolidates between the steps of its stream. It is competitive with the tested
@@ -1435,6 +1512,8 @@ measured.
 \bibitem[Cayco-Gajic et al.(2017)]{caycogajic2017} Cayco-Gajic, N.A., Clopath, C., Silver, R.A. (2017). Sparse synaptic connectivity is required for decorrelation and pattern separation in feedforward networks. \emph{Nature Communications} 8, 1116.
 
 \bibitem[Cayco-Gajic and Silver(2019)]{caycogajic2019} Cayco-Gajic, N.A., Silver, R.A. (2019). Re-evaluating circuit mechanisms underlying pattern separation. \emph{Neuron} 101, 584--602.
+
+\bibitem[De Lange et al.(2023)]{delange2023} De Lange, M., van de Ven, G.M., Tuytelaars, T. (2023). Continual evaluation for lifelong learning: Identifying the stability gap. \emph{ICLR}.
 
 \bibitem[Driessen et al.(2026)]{driessen2026} Driessen, K., Squarcio, F., Tononi, G., Cirelli, C. (2026). Induction of cortical ON/OFF periods in awake mice fulfills sleep functions. \emph{Nature Neuroscience} 29, 1954--1965.
 

@@ -425,6 +425,17 @@ $K$ for the system and the replay references (held-out split, six seeds).}
 \label{fig:batch}
 \end{figure}
 
+\paragraph{Behaviour during the stream.} Measured while the stream runs rather than at its
+end (Appendix~\ref{app:online}), the two components separate again, along different axes.
+Isolation is what holds the served prediction still: the replay update changes the
+prediction on $0.33\pm0.04\%$ of the current batch against $4.39\pm2.15\%$ unmasked, and it
+halves the rate even on top of rotation ($0.62\pm0.06$; paired $0.29$ $[+0.26,+0.34]$).
+Rotation is what keeps the retention curve flat: the drop on the classes already learnt
+after a task switch is $1.5\pm0.3$ points with it and about $16$ without. Offline rehearsal
+repairs the old tasks only when its night arrives, leaving a $38$-point gap and serving the
+stream at $87.6\%$ against the system's $97.7\%$; DER++ under the same schedule gaps by
+$2.0$ and serves at $97.0\%$, with a higher anytime accuracy ($96.6$ against $94.9$).
+
 \paragraph{Controls.} Replay confined to the readout row falls to $41.7\pm10.9$ and costs
 $13$ static points, so hidden-layer replay updates are essential. A random suppression of
 matched size recovers most of rotation's gain ($91.1\pm0.7$) but trails it by $0.5$
@@ -432,12 +443,11 @@ sequential and $1.8$ static points with $1.3\times$ the forgetting: alternating 
 carries most of the effect, and resting the recent winners the rest. Soft rotation, halving
 rather than silencing the recent winners, loses on both axes ($89.9/84.6$), so all-or-none
 OFF periods beat turned-down gain, as in the biological tonic control. Mirror isolation,
-which bars the waking update from the synapses that served the last replay batch and leaves
-replay unmasked, reaches $79.4\pm3.5$; this reversed mask is one implementation of the
-protect-the-past direction and loses twelve points, which locates the value in the direction
-of protection and not in masking as such. The unmasked control is not handicapped
-by its replay step: over replay gains $\{1/16,1/4,1,3,10\}$ it plateaus from gain $1$ to $3$
-($85.7$, $85.4$) and never closes the gap (Appendix~\ref{app:further}).
+which protects the past instead by barring the waking update from the synapses that served
+the last replay batch, loses twelve points ($79.4\pm3.5$), which locates the value in the
+direction of protection rather than in masking as such. The unmasked control is not
+handicapped by its replay step: over replay gains $\{1/16,1/4,1,3,10\}$ it plateaus from
+gain $1$ to $3$ and never closes the gap (Appendix~\ref{app:further}).
 
 \paragraph{Transfer to CIFAR-10.} On raw split CIFAR-10 (Table~\ref{tab:cifar}) the ordering
 among the local-learner variants and BP+ER transfers and widens: isolated replay with rotation
@@ -479,19 +489,16 @@ many updates ($16{,}885$ masked micro-batch updates against $480$ night batches)
 schedules meet the night's budget within $1.1\times$ and keep the accuracy: eight-sample
 micro-batches at every waking batch ($91.1\pm0.4$) and $16$-sample ones at every second
 batch ($91.2\pm0.2$). Accuracy therefore depends on the frequency of small isolated updates
-rather than on the number of replayed samples. In wall-clock on one CPU thread the headline
-run takes $8.8$ minutes against $1.4$ for the night, $8.6$ for unmasked interleaved replay and
-$1.0$ with no replay, in an unoptimised implementation whose mask construction is dense: the
+rather than on the number of replayed samples. On one CPU thread the headline run takes
+$8.8$ minutes against $1.4$ for the night and $8.6$ for unmasked interleaved replay: the
 per-batch replay step, not the sample count, is the online price of consolidating during the
 stream (Appendix~\ref{app:cost}).
 
 \paragraph{Buffer size.} Figure~\ref{fig:batch} (right) varies the buffer. At $K{=}200$ the
-system leads every reference ($83.0\pm1.4$ against $82.7\pm2.9$ for offline rehearsal,
-$77.1\pm0.9$ for DER++ and $68.5\pm2.4$ for BP+ER); at $K{=}1000$ it ties DER++; at
-$K{=}5000$ the backprop references pull ahead ($95.7$ for DER++ and $95.2$ for BP+ER
-against $93.8\pm0.2$), while offline rehearsal on the local learner saturates near $88$. The
-mechanism's advantage is therefore largest where an agent's memory is smallest, and at large
-buffers the ceiling is the local learner's own i.i.d.\ accuracy ($94.1$), not the mechanism.
+system leads every reference ($83.0\pm1.4$ against $82.7\pm2.9$ for offline rehearsal and
+$77.1\pm0.9$ for DER++); at $K{=}5000$ the backprop references pull ahead ($95.7$ and $95.2$
+against $93.8\pm0.2$). The advantage is largest where an agent's memory is smallest, and at
+large buffers the ceiling is the local learner's own i.i.d.\ accuracy ($94.1$).
 
 \paragraph{The mechanism on a backprop learner.} Nothing in the construction requires the
 local rule, so Table~\ref{tab:bpk} runs the same schedule on a backprop MLP of the same width
@@ -564,18 +571,16 @@ margins should be read. First, Table~\ref{tab:ablation} compares across schedule
 schedule is worth up to two points on its own, so the within-schedule reading is
 Table~\ref{tab:bpk}: there the system keeps its lead over ER and ER-ACE, loses $1.5$ points
 to DER++ with five epochs per task and takes $1.6$ back in a single pass. Second, the
-guarantee covers the hidden computation and not the output: the readout stays plastic, so a
-waking prediction still changes on $0.32\%$ of samples per update, and on $0.001\%$ when the
-readout is isolated as well. Final accuracy is not what that guarantee buys; the direct
-measurement, prediction stability during online operation, is one we did not make. The lead over the best offline
-night is $2.6$ points on the first split and $0.3$ on the second, and on raw CIFAR-10 ER-ACE
-and DER++ lead the system by two to three points under their own protocol. Rotation
+guarantee covers the hidden computation and not the output, since the readout is
+deliberately left plastic; what reaches the served prediction through it is the churn
+measured above, and $0.001\%$ once the readout is isolated too. The lead over the best
+offline night is $2.6$ points on the first split and $0.3$ on the second, and on raw
+CIFAR-10 ER-ACE and DER++ lead by two to three points under their own protocol. Rotation
 keeps a static price of $1.3$ points on the local learner and $0.5$ to $0.9$ on the backprop
 one, and the system makes $35\times$ the night's updates at $6\times$ its wall-clock, in an
 implementation that materialises a mask that is an outer product of two indicator vectors.
-The rule's synaptic decay is tuned once per dataset; Appendix~\ref{app:controller} replaces
-it by one ratio target and, with locally learned skip synapses, holds five hidden layers at
-the two-layer level. Code can be found at
+The decay is tuned once per dataset; Appendix~\ref{app:controller} replaces it by one ratio
+target and holds five hidden layers at the two-layer level. Code can be found at
 \url{https://anonymous.4open.science/r/IaC-CL-with-no-offline}
 
 % ================================================================ 6
@@ -584,18 +589,17 @@ the two-layer level. Code can be found at
 
 Consolidation does not require an offline phase. Replay written into the degrees of freedom
 that the current batch leaves unused holds the hidden computation on that batch invariant,
-exactly for silent and suppressed units, and the resulting learner matches or exceeds the
-best offline rehearsal schedule we could tune while replaying about twice its samples. The
-two ingredients play different roles. Refractory rotation supplies the accuracy and is the
-part that transfers: on a backprop learner with the same sparse layers it adds half a point
-in five epochs and three in a single pass. Isolation supplies the guarantee, at no cost on
-top of rotation, and the graceful degradation that comes with it. Against replay baselines
-re-tuned under the same schedule the picture splits by protocol: DER++ leads by $1.5$ points
-when the data is seen five times, and the system leads it by $1.6$ when the data is seen
-once, the regime the construction was built for. What it asks of an architecture is modest
-and checkable: a batch must leave most units silent, and the replay update must be maskable
-synapse by synapse. Whether that survives the batch sizes and the weight sharing of
-convolutional and attention stacks is the measurement we would make next.
+and the resulting learner matches or exceeds the best offline rehearsal schedule we could
+tune while replaying about twice its samples. The two ingredients divide the work. Rotation
+supplies the accuracy and the flat retention curve, and it is the part that transfers to a
+backprop learner. Isolation supplies the guarantee, at no cost on top of rotation, and it is
+what keeps the served prediction still, changing it an order of magnitude less often than
+unmasked replay. Against baselines re-tuned under the same schedule the picture splits by
+protocol: DER++ leads by $1.5$ points when the data is seen five times, and the system leads
+by $1.6$ when it is seen once, the regime the construction was built for. What it asks of an
+architecture is modest and checkable: a batch must leave most units silent, and the replay
+update must be maskable synapse by synapse. Whether that survives the batch sizes and the
+weight sharing of convolutional and attention stacks is the measurement we would make next.
 
 \clearpage
 \bibliographystyle{plainnat}
@@ -618,6 +622,8 @@ convolutional and attention stacks is the measurement we would make next.
 \bibitem[Caccia et al.(2022)]{caccia2022} Caccia, L., Aljundi, R., Asadi, N., Tuytelaars, T., Pineau, J., Belilovsky, E. (2022). New insights on reducing abrupt representation change in online continual learning. In \emph{ICLR}.
 
 \bibitem[Chaudhry et al.(2019)]{chaudhry2019} Chaudhry, A., Ranzato, M., Rohrbach, M., Elhoseiny, M. (2019). Efficient lifelong learning with A-GEM. In \emph{ICLR}.
+
+\bibitem[De Lange et al.(2023)]{delange2023} De Lange, M., van de Ven, G.M., Tuytelaars, T. (2023). Continual evaluation for lifelong learning: Identifying the stability gap. In \emph{ICLR}.
 
 \bibitem[Driessen et al.(2026)]{driessen2026} Driessen, K., Squarcio, F., Tononi, G., Cirelli, C. (2026). Induction of cortical ON/OFF periods in awake mice fulfills sleep functions. \emph{Nature Neuroscience}, 29:1954--1965.
 
@@ -893,6 +899,53 @@ replay events; trickles and clocked bursts fail alike, pressure-triggered bursts
 most of the accuracy at a third of the events, surprise triggering fires no events in this
 regime.}
 \label{fig:timing}
+\end{figure}
+
+\section{Continual evaluation during the stream}
+\label{app:online}
+Every configuration in Table~\ref{tab:online} is the one of Table~\ref{tab:ablation}, run
+again with three measurements taken while the stream runs. \emph{Online} is the accuracy of
+the prediction the learner makes on each incoming batch before it learns from that batch,
+which is what an agent acting on the stream would have got right. \emph{Anytime} and
+\emph{worst} come from evaluating every $50$ waking batches on the classes seen so far, with
+the suppression mask off as at the end of training. \emph{Gap} is the stability gap \citep{delange2023}: the
+drop from the accuracy on the already-learnt tasks just before a task switch to its lowest
+point within the next thousand waking batches, averaged over the four switches.
+\emph{Churn} is the fraction of the current waking batch whose prediction the replay update
+changes, measured as in Section~\ref{sec:method} but for every variant.
+
+\begin{table}[h]
+\centering\footnotesize
+\caption{\textbf{Measured while the stream runs} (held-out split; six seeds for the first two
+rows, three for the rest). Churn is undefined for schedules that do not replay during the
+stream.}
+\label{tab:online}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+ & Online & Anytime & Worst & Gap & Churn \\
+\midrule
+isolated replay $+$ rotation & $97.7\pm0.1$ & $94.9\pm0.3$ & $66.2\pm4.4$ & $\mathbf{1.5\pm0.3}$ & $\mathbf{0.33\pm0.04}$ \\
+rotation, unmasked replay & $97.8\pm0.1$ & $95.4\pm0.1$ & $69.7\pm2.9$ & $2.3\pm1.1$ & $0.62\pm0.06$ \\
+isolated replay, no rotation & $97.6\pm0.1$ & $94.1\pm0.3$ & $63.9\pm1.9$ & $16.9\pm1.8$ & $0.30\pm0.03$ \\
+unmasked, no rotation & $95.9\pm1.3$ & $92.9\pm1.4$ & $32.9\pm26.0$ & $15.9\pm7.3$ & $4.39\pm2.15$ \\
+offline rehearsal & $87.6\pm0.2$ & $83.3\pm0.7$ & $33.1\pm4.9$ & $38.4\pm0.2$ & --- \\
+no replay & $91.3\pm0.7$ & $43.0\pm0.1$ & $18.7\pm0.2$ & $51.8\pm0.0$ & --- \\
+BP $+$ DER++, same schedule & $97.0\pm0.1$ & $\mathbf{96.6\pm0.1}$ & $\mathbf{72.7\pm0.1}$ & $2.0\pm0.1$ & --- \\
+BP $+$ ER, same schedule & $97.5\pm0.1$ & $96.0\pm0.2$ & $72.6\pm0.8$ & $3.3\pm0.6$ & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{fig_stability.pdf}
+\caption{\textbf{Left:} accuracy on the classes seen so far, measured every $50$ waking
+batches; vertical lines are task switches, bands are one standard deviation over seeds.
+Offline rehearsal recovers the old tasks only when its night arrives, so the stream is
+served by a network that has not yet been repaired. \textbf{Right:} the fraction of the
+current batch whose prediction the replay update changes, on a logarithmic axis, for the
+four cells of the isolation and rotation square; every seed is drawn.}
+\label{fig:stability}
 \end{figure}
 
 \section{Isolation across replay batch sizes}

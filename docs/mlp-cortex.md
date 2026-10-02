@@ -848,3 +848,36 @@ ER +2.0、DER++ +1.6、ER-ACE −0.5。
 之前写的"微批调度对 backprop 值三点"也是错的，那三点里只有约两点来自调度，其余来自 k-WTA。两版稿件的
 摘要、Results 首段、5.7/表 3、Limitations、Conclusion、附录调参段与表 5 全部按此改写；表 3 扩成两块，
 上块 BP+k-WTA、中块同调度的三个发表基线、下块本系统作参照。Workshop 正文仍止于第 8 页。
+
+### 流上的持续评估：在线准确率、stability gap、服务预测抖动（2026-10-02 夜，camera-ready）
+
+**动机**：审稿人 4wXY 的第一条意见，"保护当前计算的实际收益没有被直接证明，而且 readout 可塑意味着隐层
+不变不等于输出不变"。`run_local` 与 `run()` 各加两个钩子：`eval_every` 步在已见类别上评估一次（关抑制，
+与期末口径一致）、每个 waking batch 在学习它之前记录预测是否正确；churn 复用已有的 `diag_drift`
+（回放更新前后用同一抑制掩码重推当前 batch）。注意 `sweep_errors` 返回前会把 `x[L]` 换成标签，所以在线
+预测必须由 `net.mu(L, a[L-1])` 从自由前向的激活重建，否则在线准确率会恒为 100%。新配置 `g29_stab_*`，
+分析脚本 `scripts/stability.py`，图 `report/make_fig_stability.py`。插桩不改变轨迹（同种子最终精度一致）。
+
+**结果（held-out；前两行六种子，其余三种子）**：
+
+| 配置 | online | anytime | worst | gap | churn |
+|---|---|---|---|---|---|
+| isolated + rotation | 97.7 | 94.9 | 66.2 | **1.5** | **0.33** |
+| rotation, unmasked | 97.8 | 95.4 | 69.7 | 2.3 | 0.62 |
+| isolated, no rotation | 97.6 | 94.1 | 63.9 | 16.9 | 0.30 |
+| unmasked, no rotation | 95.9 | 92.9 | 32.9 | 15.9 | 4.39 |
+| offline rehearsal | 87.6 | 83.3 | 33.1 | 38.4 | --- |
+| no replay | 91.3 | 43.0 | 18.7 | 51.8 | --- |
+| BP+DER++（同调度） | 97.0 | **96.6** | **72.7** | 2.0 | --- |
+| BP+ER（同调度） | 97.5 | 96.0 | 72.6 | 3.3 | --- |
+
+**核心发现是一个干净的分工**：churn 由 isolation 决定（有掩码 0.33 / 0.30，无掩码 0.62 / 4.39；配对
+0.29 [+0.26,+0.34]），stability gap 由 rotation 决定（有轮换 1.5 / 2.3，无轮换 16.9 / 15.9）。离线夜间
+是极端情形：38 点 gap、在线 87.6%。诚实的另一面：不加掩码的两格在 anytime 与 worst 上更好
+（rot_noiso +0.5 / +3.5，DER++ +1.7 / +6.5），因为把回放写到各处能更快修复旧任务。
+
+**稿件**：workshop 在 Results 加"Behaviour during the stream"一段（为守住第 8 页，压缩了 Controls、
+Cost、Buffer size、Conclusion、Limitations），附录新增一节含表与图；preprint 新增 5.3 节含表 1 与图 6，
+Limitations 删去"我们没有测"改为指向该节并保留"churn 对下游控制器意味着什么仍未知"的限定，Conclusion
+加一句。两版新增 De Lange et al. (2023) 的 stability gap 引用。workshop 18 页正文止于第 8 页，preprint 27 页，
+零错误零 Type 3。
