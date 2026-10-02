@@ -1110,6 +1110,24 @@ for _var, _iso, _rot in (("er", False, False), ("iso", True, False), ("er_rot", 
         CONFIGS[f"bpk_{_var}_lr{_lt}_stream"] = dict(_base, epochs=1)
 
 
+
+# 28 (camera-ready): the published replay baselines under OUR schedule, i.e. a waking batch of
+# 16 with a replay batch of the same size, so that the comparison in the main table does not
+# cross schedules.  The learning rate is re-swept, because the batch-16 regime moved it for the
+# backprop k-WTA learner; alpha and beta keep the values selected at batch 256.
+for _lt, _lr in (("3e6", 3e-6), ("1e5", 1e-5), ("3e5", 3e-5), ("1e4", 1e-4), ("3e4", 3e-4), ("1e3", 1e-3)):
+    _mb = dict(buffer=1000, policy="random", batch=16, bp_lr=_lr)
+    CONFIGS[f"mb_bp_er_lr{_lt}"] = dict(CONFIGS["bp_er_1000"], **_mb)
+    CONFIGS[f"mb_bp_erace_lr{_lt}"] = dict(CONFIGS["bp_erace_1000"], **_mb)
+    CONFIGS[f"mb_bp_derpp_lr{_lt}"] = dict(CONFIGS["bp_derpp_a0.03_b1.0_w512_ce"], **_mb)
+
+
+# selected on the development split under the micro-batch schedule: DER++ and ER at 3e-5,
+# ER-ACE at 3e-4; single-pass variants of the same cells
+for _n, _src in {"derpp": "mb_bp_derpp_lr3e5", "erace": "mb_bp_erace_lr3e4", "er": "mb_bp_er_lr3e5"}.items():
+    CONFIGS[f"mb_bp_{_n}_stream"] = dict(CONFIGS[_src], epochs=1)
+
+
 def n_classes(cfg):
     return 100 if str(cfg.get("dataset", "")).startswith("cifar100") else 10
 
@@ -1540,6 +1558,7 @@ def predict(model, net, X):
 # ------------------------------------------------------------------ protocol
 def run(config, seed, epochs_per_task, batch, nrem_batches, nrem_gain):
     cfg = CONFIGS[config]
+    batch = cfg.get("batch", batch)  # 28: per-config waking batch, for schedule-matched baselines
     model, K = cfg["model"], cfg.get("buffer", 0)
     policy, replay, static = cfg.get("policy", "random"), cfg.get("replay", None), cfg.get("static", False)
     nrem_batches, nrem_gain = cfg.get("nrem_batches", nrem_batches), cfg.get("nrem_gain", nrem_gain)

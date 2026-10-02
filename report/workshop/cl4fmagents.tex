@@ -50,12 +50,13 @@ hidden computation on the current batch invariant: exactly so for silent and sup
 and for all but $0.3\%$ of samples in practice. A refractory rule under which units that have
 just fired sit out the next competition doubles the width of this channel and carries most of
 the accuracy. On class-incremental split-MNIST the resulting learner, with no offline phase,
-matches or exceeds the best offline rehearsal schedule, matches DER++, the strongest
-interleaved-replay reference under backprop, and outperforms experience replay, ER-ACE and
-unmasked interleaved replay; in a single pass over the stream, where one offline phase per
-task is too few, it leads DER++ and its lead over offline rehearsal grows to $15$ points. On
-split CIFAR-10 it again leads offline rehearsal and experience replay, but trails ER-ACE and
-DER++ by two to three points. The construction is not tied to the local learner: on a
+matches or exceeds the best offline rehearsal schedule and outperforms experience replay,
+ER-ACE and unmasked interleaved replay, each re-tuned under the same micro-batch schedule.
+Against DER++ the comparison splits by protocol: with five epochs per task DER++ leads by
+$1.5$ points once it runs under that schedule, and in a single pass over the stream, the
+regime a deployed agent is in, the system leads it by $1.6$ while offline rehearsal falls
+$15$ points behind. On split CIFAR-10 it again leads offline rehearsal and experience
+replay, but trails ER-ACE and DER++ by two to three points. The construction is not tied to the local learner: on a
 backprop network with $k$-winner-take-all hidden layers under the same schedule, refractory
 rotation adds half a point in five epochs and three in a single pass, and isolation again
 costs nothing on top of it.
@@ -378,16 +379,19 @@ learner, the reference that does have downtime, reaches $89.0\pm3.5$ on this spl
 bimodal spread across seeds, and $91.5\pm0.5$ on the second held-out split; the narrower
 learner it prefers reaches $88.5\pm2.8$ and $89.3\pm0.6$. Consolidation during inference thus
 matches the offline reference on both splits and exceeds it on the first. Against the methods
-that, like ours, have no offline phase, the lead is consistent: $+2.8$ points over BP+ER
-(seed-paired, $95\%$ interval $[+2.5,+3.2]$), $+6.3$ over unmasked interleaved replay on our
-own learner, $+1.5$ over ER-ACE and $+23$ over A-GEM, whose gradient projection protects the
-past at the expense of the present. DER++, which distils stored logits, is the one reference
-the system does not beat: the two tie at $91.5\pm0.5$ and $91.6\pm0.3$, a paired difference
-of $0.1$ $[-0.3,+0.4]$. In a single pass over the stream the picture sharpens: the system loses
-nothing ($91.8\pm0.3$), DER++ drops to $90.1\pm0.7$ and BP+ER holds at $88.6$, unmasked
-replay becomes unstable ($83.0\pm14.9$), and offline rehearsal falls to $76.9\pm3.4$ because
-one night per task is too few. The price on the static axis is $1.0$ point against the same
-learner without replay ($95.1$) and $3.3$ against dense backprop.
+that, like ours, have no offline phase, the lead over the published protocols is $+2.8$
+points over BP+ER (seed-paired, $95\%$ interval $[+2.5,+3.2]$), $+6.3$ over unmasked
+interleaved replay on our own learner, $+1.5$ over ER-ACE and $+23$ over A-GEM, whose
+gradient projection protects the past at the expense of the present. Those references run
+under their own batch-$256$ protocol, so Table~\ref{tab:bpk} re-tunes and re-runs them under
+ours. The schedule is worth $2.0$ points to ER and $1.6$ to DER++ and costs ER-ACE $0.5$.
+Against the re-tuned references the system still leads ER by $0.9$ $[+0.2,+1.6]$ and ER-ACE
+by $1.9$ $[+1.4,+2.4]$, while DER++, which distils stored logits, now leads it by $1.5$
+$[+1.0,+2.0]$. In a single pass over the stream the ordering turns over: the system loses
+nothing ($91.8\pm0.3$) while DER++ falls to $90.2\pm0.4$, ER-ACE to $90.5\pm0.6$ and ER to
+$87.8\pm0.6$, unmasked replay becomes unstable ($83.0\pm14.9$), and offline rehearsal falls
+to $76.9\pm3.4$ because one night per task is too few. The price on the static axis is $1.0$
+point against the same learner without replay ($95.1$) and $3.3$ against dense backprop.
 
 \paragraph{What rotation and isolation each buy.} Removing rotation costs $3.6$ sequential
 points ($88.0\pm0.7$, the same mask on natural silence alone) and removing both rotation and
@@ -494,29 +498,38 @@ local rule, so Table~\ref{tab:bpk} runs the same schedule on a backprop MLP of t
 with \kwta{} hidden layers at the same $10\%$ fraction. Rotation transfers: it lifts
 interleaved replay from $91.7\pm0.4$ to $92.2\pm0.3$ (seed-paired $+0.5$ $[+0.2,+0.8]$) and
 from $89.3$ to $92.7$ in a single pass ($+3.4$ $[+2.8,+4.0]$), to the level of the local
-learner and of DER++ under its own batch-$256$ protocol ($91.5$), at a static price of
-$0.5$--$0.9$ points. Isolation on top of rotation
+learner, at a static price of $0.5$--$0.9$ points. Isolation on top of rotation
 again costs nothing ($-0.1$ $[-0.3,+0.1]$) and brings the guarantee. Isolation alone,
 however, hurts the backprop learner ($84.7\pm2.6$, seven points below interleaved replay)
 where it helped the local one: without rotation the channel that natural silence leaves open
 is too narrow for this learner, so on backprop the guarantee is affordable only through the
-rotation. The schedule itself is also worth three points to backprop (interleaved replay in
-$16$-sample micro-batches reaches $91.7$ against $88.8$ for BP+ER in batches of $256$).
+rotation. The lower block of the table separates the schedule from the sparsity. Moving the
+published baselines to the micro-batch schedule is worth $2.0$ points to ER and $1.6$ to
+DER++ and costs ER-ACE $0.5$, so adding \kwta{} is what carries the rest of ER's distance to
+$91.7$, and DER++ at $93.1\pm0.6$ is the strongest cell we measured on this protocol.
 
 \begin{table}[t]
 \centering\footnotesize
-\caption{\textbf{The same schedule on a backprop learner} ($512$--$256$, \kwta{} $10\%$, Adam,
-waking batches of $16$ with one $16$-sample replay micro-batch each, $K{=}1000$; held-out
-split, six seeds; learning rate selected on the development split).}
+\caption{\textbf{Backprop learners under our schedule} (waking batches of $16$ with one
+$16$-sample replay micro-batch each, $K{=}1000$; held-out split, six seeds; learning rate
+re-selected on the development split for every row). Upper block: \kwta{} hidden layers at
+the same $10\%$ fraction. Lower block: the published baselines of Table~\ref{tab:ablation},
+unchanged except for the schedule.}
 \label{tab:bpk}
 \begin{tabular}{@{}lccc@{}}
 \toprule
-BP $+$ \kwta{} & Sequential & i.i.d. & Single pass \\
+Backprop, $512$--$256$, Adam & Sequential & i.i.d. & Single pass \\
 \midrule
-interleaved replay (unmasked) & $91.7\pm0.4$ & $97.2\pm0.1$ & $89.3\pm0.6$ \\
-isolated replay & $84.7\pm2.6$ & $97.6\pm0.1$ & $81.9\pm2.1$ \\
-interleaved replay $+$ rotation & $\mathbf{92.2\pm0.3}$ & $96.7\pm0.3$ & $92.7\pm0.3$ \\
-isolated replay $+$ rotation & $92.1\pm0.3$ & $96.6\pm0.1$ & $\mathbf{92.8\pm0.2}$ \\
+$+$ \kwta{}, interleaved replay (unmasked) & $91.7\pm0.4$ & $97.2\pm0.1$ & $89.3\pm0.6$ \\
+$+$ \kwta{}, isolated replay & $84.7\pm2.6$ & $97.6\pm0.1$ & $81.9\pm2.1$ \\
+$+$ \kwta{}, interleaved replay $+$ rotation & $92.2\pm0.3$ & $96.7\pm0.3$ & $92.7\pm0.3$ \\
+$+$ \kwta{}, isolated replay $+$ rotation & $92.1\pm0.3$ & $96.6\pm0.1$ & $92.8\pm0.2$ \\
+\midrule
+ER & $90.8\pm0.6$ & --- & $87.8\pm0.6$ \\
+ER-ACE & $89.7\pm0.4$ & --- & $90.5\pm0.6$ \\
+DER++ & $\mathbf{93.1\pm0.6}$ & --- & $90.2\pm0.4$ \\
+\midrule
+isolated replay $+$ rotation, local learner & $91.6\pm0.3$ & $94.1\pm0.2$ & $\mathbf{91.8\pm0.3}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -547,26 +560,22 @@ dissociation of triggers in Appendix~\ref{app:budget} is a testable prediction.
 
 \paragraph{Limitations.} All results are at MLP scale on MNIST and CIFAR-10, with six seeds
 on held-out training data and three on a second held-out split. Two caveats bound how the
-margins should be read. First, the backprop references run under their own batch-$256$
-protocol, and the micro-batch schedule is itself worth about three points to backprop
-(Table~\ref{tab:bpk}), so the $2.8$ points over BP+ER in Table~\ref{tab:ablation} mix
-schedule with mechanism; the within-schedule reading is Table~\ref{tab:bpk}, where rotation
-adds $0.5$ points in five epochs and $3.4$ in a single pass and isolation adds the guarantee
-at no cost. We did not re-run DER++ or ER-ACE under the micro-batch schedule. Second, the
+margins should be read. First, Table~\ref{tab:ablation} compares across schedules, and the
+schedule is worth up to two points on its own, so the within-schedule reading is
+Table~\ref{tab:bpk}: there the system keeps its lead over ER and ER-ACE, loses $1.5$ points
+to DER++ with five epochs per task and takes $1.6$ back in a single pass. Second, the
 guarantee covers the hidden computation and not the output: the readout stays plastic, so a
 waking prediction still changes on $0.32\%$ of samples per update, and on $0.001\%$ when the
-readout is isolated as well. Final accuracy is not the quantity that guarantee buys, and in
-our results it surfaces only at two-sample replay batches; the direct measurement, prediction
-stability during online operation, is one we did not make. The lead over the best offline
-night is $2.6$ points on the first split and $0.3$ on the second; DER++ ties the system on
-split-MNIST, and on raw CIFAR-10 ER-ACE and DER++ lead it by two to three points. Rotation
+readout is isolated as well. Final accuracy is not what that guarantee buys; the direct
+measurement, prediction stability during online operation, is one we did not make. The lead over the best offline
+night is $2.6$ points on the first split and $0.3$ on the second, and on raw CIFAR-10 ER-ACE
+and DER++ lead the system by two to three points under their own protocol. Rotation
 keeps a static price of $1.3$ points on the local learner and $0.5$ to $0.9$ on the backprop
 one, and the system makes $35\times$ the night's updates at $6\times$ its wall-clock, in an
-implementation that materialises a mask which is in fact an outer product of two indicator
-vectors. The rule's synaptic decay is tuned once per dataset; a drive-referenced controller
-that replaces it by one ratio target and, with locally learned skip synapses, holds a
-five-hidden-layer network at the two-layer level is reported in
-Appendix~\ref{app:controller}. Code can be found at
+implementation that materialises a mask that is an outer product of two indicator vectors.
+The rule's synaptic decay is tuned once per dataset; Appendix~\ref{app:controller} replaces
+it by one ratio target and, with locally learned skip synapses, holds five hidden layers at
+the two-layer level. Code can be found at
 \url{https://anonymous.4open.science/r/IaC-CL-with-no-offline}
 
 % ================================================================ 6
@@ -576,19 +585,17 @@ Appendix~\ref{app:controller}. Code can be found at
 Consolidation does not require an offline phase. Replay written into the degrees of freedom
 that the current batch leaves unused holds the hidden computation on that batch invariant,
 exactly for silent and suppressed units, and the resulting learner matches or exceeds the
-best offline rehearsal schedule we could tune on two held-out splits while replaying about
-twice its samples. The two ingredients play different roles. Refractory rotation supplies
-the accuracy, and it is the part that transfers: on a backprop learner with the same sparse
-layers it adds half a point in five epochs and three in a single pass. Isolation supplies
-the guarantee at no cost on top of rotation, and it is what keeps the system graceful at
-two-sample replay batches, where unmasked replay fails severely in half the seeds. The
-margins are widest where an agent is most constrained, at a buffer of two hundred samples
-and in a single pass over the stream, and they close against the cross-entropy backprop
-references on raw CIFAR-10, where the local learner rather than the schedule is the limit.
-What the construction asks of an architecture is modest and checkable: a batch must leave
-most units silent, and the replay update must be maskable synapse by synapse. Whether that
-survives the batch sizes and the weight sharing of convolutional and attention stacks is the
-measurement we would make next.
+best offline rehearsal schedule we could tune while replaying about twice its samples. The
+two ingredients play different roles. Refractory rotation supplies the accuracy and is the
+part that transfers: on a backprop learner with the same sparse layers it adds half a point
+in five epochs and three in a single pass. Isolation supplies the guarantee, at no cost on
+top of rotation, and the graceful degradation that comes with it. Against replay baselines
+re-tuned under the same schedule the picture splits by protocol: DER++ leads by $1.5$ points
+when the data is seen five times, and the system leads it by $1.6$ when the data is seen
+once, the regime the construction was built for. What it asks of an architecture is modest
+and checkable: a batch must leave most units silent, and the replay update must be maskable
+synapse by synapse. Whether that survives the batch sizes and the weight sharing of
+convolutional and attention stacks is the measurement we would make next.
 
 \clearpage
 \bibliographystyle{plainnat}
@@ -782,7 +789,12 @@ the no-replay level). The backprop \kwta{} learner of Table~\ref{tab:bpk} was sw
 Adam learning rates $\{10^{-5},3{\cdot}10^{-5},10^{-4},3{\cdot}10^{-4},10^{-3},3{\cdot}10^{-3}\}$
 under the local schedule; interleaved replay selects $3{\cdot}10^{-5}$ (development split
 $92.4$) and the three other variants $10^{-4}$ ($92.9$ and $92.9$ for the two rotation
-variants, $84.3$ for isolation alone). The local learner was swept over $\eta$ (a tenfold range, with a
+variants, $84.3$ for isolation alone). The published baselines in the lower block of
+Table~\ref{tab:bpk} were re-swept the same way, over
+$\{3{\cdot}10^{-6},10^{-5},3{\cdot}10^{-5},10^{-4},3{\cdot}10^{-4},10^{-3}\}$, keeping the
+$\alpha$ and $\beta$ selected at batch $256$: DER++ and ER select $3{\cdot}10^{-5}$
+(development split $93.4$ and $90.9$) and ER-ACE $3{\cdot}10^{-4}$ ($90.3$), each an
+interior optimum. The local learner was swept over $\eta$ (a tenfold range, with a
 plateau over $0.01$--$0.05$), replay batch size, cadence and the gates of
 Appendix~\ref{app:budget}.
 
@@ -1053,6 +1065,9 @@ BP $+$ \kwta{}, interleaved replay (same schedule) & $92.4\pm0.4$ & $91.7\pm0.4$
 BP $+$ \kwta{}, isolated replay & $84.3\pm2.5$ & $84.7\pm2.6$ & --- \\
 BP $+$ \kwta{}, interleaved replay $+$ rotation & $92.9\pm0.4$ & $92.2\pm0.3$ & --- \\
 BP $+$ \kwta{}, isolated replay $+$ rotation & $92.9\pm0.2$ & $92.1\pm0.3$ & --- \\
+BP $+$ DER++, waking batch $16$ & $93.4\pm0.1$ & $93.1\pm0.6$ & $93.2\pm0.6$ \\
+BP $+$ ER-ACE, waking batch $16$ & $90.3\pm0.5$ & $89.7\pm0.4$ & $89.9\pm0.3$ \\
+BP $+$ ER, waking batch $16$ & $90.9\pm0.3$ & $90.8\pm0.6$ & $90.3\pm0.8$ \\
 \midrule
 \multicolumn{4}{@{}l}{\emph{single pass (one epoch per task)}} \\
 \quad isolated replay $+$ rotation & $91.8\pm0.4$ & $91.8\pm0.3$ & $91.8\pm0.1$ \\

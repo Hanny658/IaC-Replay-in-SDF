@@ -827,3 +827,24 @@ Learning Without an Offline Phase"（preprint 页眉短标题同改），并删�
 **措辞修正（09-08 午）**：BP+k-WTA+rotation 与 DER++ 的比较跨协议（微批调度 vs batch 256，调度本身值约 3 点），
 两稿摘要、结果段、Discussion、Conclusion 一律改为"达到 local learner 与 DER++（其自身协议下）的水平"，
 不再写 "above DER++"。
+
+### 同调度下重跑 DER++ / ER-ACE / ER（2026-10-02，camera-ready）
+
+**动机**：审稿人 4wXY 指出强基线用的是不同调度（batch 256），而我们自己的数据显示小批调度能改善交错回放，
+因此归因不清。`run()` 增加按配置覆盖 waking batch 的开关（`cfg["batch"]`），新增 `mb_bp_{er,erace,derpp}_lr*`
+配置：与本系统完全相同的调度（waking batch 16、每步一个 16 样本 replay micro-batch、K=1000 reservoir），
+α 与 β 沿用 batch 256 下选定的值，学习率在开发集上重扫
+{3e-6, 1e-5, 3e-5, 1e-4, 3e-4, 1e-3}。选中：DER++ 与 ER 取 3e-5（开发集 93.4 / 90.9），ER-ACE 取 3e-4（90.3），
+三者均为网格内部极值。耗时很小：batch 16 下每种子 ER 1.0 分钟、ER-ACE 1.2、DER++ 2.0；全部 99 个运行
+（36 + 18 开发集，45 held-out）约 40 分钟。
+
+**held-out 六种子结果（五 epoch / 单遍）**：DER++ 93.1±0.6 / 90.2±0.4；ER-ACE 89.7±0.4 / 90.5±0.6；
+ER 90.8±0.6 / 87.8±0.6；本系统 91.6±0.3 / 91.8±0.3。第二划分：93.2 / 89.9 / 90.3 对本系统 91.8。
+配对边际（相对本系统）：DER++ +1.5 [+1.0,+2.0]，ER −0.9 [−1.6,−0.2]，ER-ACE −1.9 [−2.4,−1.4]；
+单遍则全部反向：DER++ −1.6 [−2.0,−1.2]，ER-ACE −1.3，ER −4.0。调度本身的价值（held-out，256→16）：
+ER +2.0、DER++ +1.6、ER-ACE −0.5。
+
+**结论变化**：**"tied with DER++" 不再成立**，五 epoch 下 DER++ 领先 1.5 点，单遍下本系统领先 1.6 点。
+之前写的"微批调度对 backprop 值三点"也是错的，那三点里只有约两点来自调度，其余来自 k-WTA。两版稿件的
+摘要、Results 首段、5.7/表 3、Limitations、Conclusion、附录调参段与表 5 全部按此改写；表 3 扩成两块，
+上块 BP+k-WTA、中块同调度的三个发表基线、下块本系统作参照。Workshop 正文仍止于第 8 页。
