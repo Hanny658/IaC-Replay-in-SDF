@@ -47,13 +47,16 @@ def author_block(authors):
 
     lines = [f"{a['name']} -- {a['affiliation']} -- {a['email']}" for a in authors]
     affs = list(dict.fromkeys(a["affiliation"] for a in authors))
+    # the agency sets its name with a five-pointed star, not the six-pointed
+    # text asterisk; the stored affiliation stays plain so the metadata reads cleanly
+    affs_tex = [a.replace("A*STAR", "A\\raisebox{0.12ex}{$\\star$}STAR") for a in affs]
     mail = lambda a: "\\texttt{%s}" % a["email"].replace("_", "\\_")
-    tail = " \\\\\n".join(f"  $^{{{i + 1}}}${a}" for i, a in enumerate(affs))
+    tail = " \\\\\n".join(f"  $^{{{i + 1}}}${a}" for i, a in enumerate(affs_tex))
 
     if len(authors) == 1:
         a = authors[0]
         return (f"\\author{{%\n  {a['name']} \\\\\n"
-                f"  {mail(a)} \\\\\n  {a['affiliation']}}}"), lines
+                f"  {mail(a)} \\\\\n  {affs_tex[0]}}}"), lines
 
     sup = lambda a: f"$^{{{affs.index(a['affiliation']) + 1}}}$"
     cols = "@{}" + "@{\\hspace{1.6em}}".join("c" * len(authors)) + "@{}"

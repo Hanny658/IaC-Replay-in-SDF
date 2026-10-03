@@ -31,10 +31,10 @@
 
 \author{%
   \begin{tabular}{@{}c@{\hspace{1.6em}}c@{\hspace{1.6em}}c@{}}
-    Yanhai Zhang$^{1}$ & Chi Xu$^{1}$ & Jie Zhang$^{2}$ \\[1pt]
-    \texttt{Zhang\_Yanhai@a-star.edu.sg} & \texttt{Xu\_Chi@a-star.edu.sg} & \texttt{ZhangJ@ntu.edu.sg}
+    Yanhai Zhang$^{1}$ & Jie Zhang$^{2}$ & Chi Xu$^{1}$ \\[1pt]
+    \texttt{Zhang\_Yanhai@a-star.edu.sg} & \texttt{ZhangJ@ntu.edu.sg} & \texttt{Xu\_Chi@a-star.edu.sg}
   \end{tabular} \\[3pt]
-  $^{1}$Agency for Science, Technology and Research (A*STAR), Singapore \\
+  $^{1}$Agency for Science, Technology and Research (A\raisebox{0.12ex}{$\star$}STAR), Singapore \\
   $^{2}$Nanyang Technological University, Singapore
 }
 
@@ -56,8 +56,8 @@ the accuracy. On class-incremental split-MNIST the resulting learner, with no of
 matches or exceeds the best offline rehearsal schedule and outperforms experience replay,
 ER-ACE and unmasked interleaved replay, each re-tuned under the same micro-batch schedule.
 Against DER++ the comparison splits by protocol: with five epochs per task DER++ leads by
-$1.5$ points once it runs under that schedule, and in a single pass over the stream, the
-regime a deployed agent is in, the system leads it by $1.6$ while offline rehearsal falls
+$1.5$ points once it runs under that schedule, and in a single pass over the stream, the regime 
+closest to the agent deployment setting, the system leads it by $1.6$ while offline rehearsal falls
 $15$ points behind. On split CIFAR-10 it again leads offline rehearsal and experience
 replay, but trails ER-ACE and DER++ by two to three points. The construction is not tied to the local learner: on a
 backprop network with $k$-winner-take-all hidden layers under the same schedule, refractory
@@ -1012,7 +1012,7 @@ two-layer default's $91.6/94.1$. BP+ER at the same widths is depth-insensitive
 
 \section{Development-phase numbers and a second held-out split}
 \label{app:val}
-Configurations were selected on the official test splits (the development set) and frozen;
+Configurations were selected on the official test splits (as our development set) and frozen;
 the comparisons in the main text re-train them on nine tenths of the training data and
 evaluate on the held-out tenth, which took part in no selection. Table~\ref{tab:val} places
 the development-set numbers beside the held-out ones and beside a second held-out tenth
