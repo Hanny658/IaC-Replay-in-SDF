@@ -38,6 +38,12 @@ ANON_AUTHOR = """\\author{%
   Anonymous author(s)\\\\
   Affiliation withheld for double-blind review}"""
 ANON_CODE = "https://anonymous.4open.science/r/IaC-CL-with-no-offline"
+ASTAR = "A\\raisebox{0.12ex}{$\\star$}STAR"
+
+
+def astar(s):
+    """The agency sets its name with a five-pointed star, not the text asterisk."""
+    return s.replace("A*STAR", ASTAR)
 
 
 def author_block(authors):
@@ -47,9 +53,7 @@ def author_block(authors):
 
     lines = [f"{a['name']} -- {a['affiliation']} -- {a['email']}" for a in authors]
     affs = list(dict.fromkeys(a["affiliation"] for a in authors))
-    # the agency sets its name with a five-pointed star, not the six-pointed
-    # text asterisk; the stored affiliation stays plain so the metadata reads cleanly
-    affs_tex = [a.replace("A*STAR", "A\\raisebox{0.12ex}{$\\star$}STAR") for a in affs]
+    affs_tex = [astar(a) for a in affs]
     mail = lambda a: "\\texttt{%s}" % a["email"].replace("_", "\\_")
     tail = " \\\\\n".join(f"  $^{{{i + 1}}}${a}" for i, a in enumerate(affs_tex))
 
@@ -74,7 +78,7 @@ def load_private():
         sys.exit(f"missing {PRIVATE}; see the module docstring for its format")
     cfg = json.load(open(PRIVATE, encoding="utf-8"))
     block, lines = author_block(cfg["authors"])
-    return block, lines, cfg["code_url"]
+    return block, lines, cfg["code_url"], cfg.get("funding", "")
 
 # The arXiv abstract field takes at most 1,920 characters, so the form gets this condensed
 # version while the PDF keeps the full one.  Authored by hand; keep it in sync with the paper.
@@ -106,7 +110,7 @@ def detex(s):
 
 def main():
     tex = open(SRC, encoding="utf-8").read()
-    author_block, author_lines, public_code = load_private()
+    author_block, author_lines, public_code, funding = load_private()
 
     # --- de-anonymise
     assert tex.count(ANON_AUTHOR) == 1, "author block not found; was preprint.tex edited?"
@@ -115,6 +119,14 @@ def main():
     tex = tex.replace(ANON_CODE, public_code)
     assert not tex.lstrip().startswith("\\pdfoutput"), "pdfoutput already present"
     tex = "\\pdfoutput=1\n" + tex
+
+    # the funding statement is identifying, so it lives in the private config too
+    if funding:
+        bib = "\\clearpage\n\\begin{thebibliography}"
+        assert tex.count(bib) == 1, "bibliography anchor not found"
+        tex = tex.replace(bib, "\\clearpage\n\\section*{Acknowledgments and "
+                               "Disclosure of Funding}\n" + astar(funding)
+                               + "\n\n\\begin{thebibliography}")
 
     # --- lay out the bundle
     if os.path.isdir(OUT):
