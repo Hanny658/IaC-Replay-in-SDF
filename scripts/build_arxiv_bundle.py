@@ -13,10 +13,14 @@ document is altered.
 The identifying values are NOT stored in the repository.  They are read from
 report/arxiv_private.json (gitignored), which must look like
 
-    {"authors": ["First Author", "email@example.org", "Affiliation, Country"],
+    {"authors": [{"name": "First Author", "email": "first@example.org",
+                  "affiliation": "Affiliation, Country"}, ...],
      "code_url": "https://github.com/<owner>/<repo>"}
 
-Each "authors" entry becomes one line of the \\author block.
+Authors sharing an affiliation share its number.  A single author is set as three stacked
+lines; several are set as a row of names with their addresses underneath and the
+affiliations below, which is what fits the column width.  A plain list of strings is still
+accepted, each string becoming one line of the \\author block.
 """
 import json
 import os
@@ -36,12 +40,37 @@ ANON_AUTHOR = """\\author{%
 ANON_CODE = "https://anonymous.4open.science/r/IaC-CL-with-no-offline"
 
 
+def author_block(authors):
+    """The \\author block, and the plain-text author lines for the metadata file."""
+    if authors and isinstance(authors[0], str):                       # legacy flat form
+        return "\\author{%\n" + " \\\\\n".join(f"  {a}" for a in authors) + "}", authors
+
+    lines = [f"{a['name']} -- {a['affiliation']} -- {a['email']}" for a in authors]
+    affs = list(dict.fromkeys(a["affiliation"] for a in authors))
+    mail = lambda a: "\\texttt{%s}" % a["email"].replace("_", "\\_")
+    tail = " \\\\\n".join(f"  $^{{{i + 1}}}${a}" for i, a in enumerate(affs))
+
+    if len(authors) == 1:
+        a = authors[0]
+        return (f"\\author{{%\n  {a['name']} \\\\\n"
+                f"  {mail(a)} \\\\\n  {a['affiliation']}}}"), lines
+
+    sup = lambda a: f"$^{{{affs.index(a['affiliation']) + 1}}}$"
+    cols = "@{}" + "@{\\hspace{1.6em}}".join("c" * len(authors)) + "@{}"
+    block = ("\\author{%\n"
+             f"  \\begin{{tabular}}{{{cols}}}\n"
+             "    " + " & ".join(a["name"] + sup(a) for a in authors) + " \\\\[1pt]\n"
+             "    " + " & ".join(mail(a) for a in authors) + "\n"
+             "  \\end{tabular} \\\\[3pt]\n"
+             f"{tail}}}")
+    return block, lines
+
+
 def load_private():
     if not os.path.isfile(PRIVATE):
         sys.exit(f"missing {PRIVATE}; see the module docstring for its format")
     cfg = json.load(open(PRIVATE, encoding="utf-8"))
-    lines = cfg["authors"]
-    block = "\\author{%\n" + " \\\\\n".join(f"  {l}" for l in lines) + "}"
+    block, lines = author_block(cfg["authors"])
     return block, lines, cfg["code_url"]
 
 # The arXiv abstract field takes at most 1,920 characters, so the form gets this condensed
