@@ -1,9 +1,9 @@
 \documentclass{article}
-% NeurIPS 2026 workshop submission: anonymous (default = submission mode with line numbers)
-\usepackage{neurips_2026}
-\makeatletter
-\renewcommand{\@noticestring}{Submitted to the NeurIPS 2026 Workshop on Continual Learning in the Era of Foundation Models and Embodied Agents (CL4FMAgents). Do not distribute.}
-\makeatother
+% NeurIPS 2026 workshop camera-ready: accepted at CL4FMAgents.
+% final = no line numbers and the byline is shown; the style file builds the venue notice
+% from the workshop title below.
+\usepackage[final,dblblindworkshop]{neurips_2026}
+\workshoptitle{Continual Learning in the Era of Foundation Models and Embodied Agents}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \renewcommand{\ttdefault}{lmtt}  % Type 1 typewriter; avoids the bitmap ectt (Type 3) font in \url
@@ -23,7 +23,6 @@
 \usetikzlibrary{arrows.meta,positioning,patterns,calc}
 \graphicspath{{../figs/}}
 \newcommand{\kwta}{$k$-WTA}
-\newcommand{\pend}[1]{\textcolor{red}{#1}}  % numbers still being computed tonight; none may remain
 \newtheorem{proposition}{Proposition}
 \newtheorem{corollary}{Corollary}
 \newtheorem{definition}{Definition}
@@ -31,8 +30,10 @@
 \title{Replay in the Silent Degrees of Freedom: Continual Learning Without an Offline Phase}
 
 \author{%
-  Anonymous authors\\
-  Paper under double-blind review
+  % CAMERA-READY BYLINE: replace the line below with name, affiliation and e-mail,
+  % one row per line (\\ between rows, \And between co-authors).
+  % The red marker is there so an unfilled byline cannot reach the submission.
+  \textcolor{red}{[byline]}
 }
 
 \begin{document}
@@ -581,7 +582,7 @@ one, and the system makes $35\times$ the night's updates at $6\times$ its wall-c
 implementation that materialises a mask that is an outer product of two indicator vectors.
 The decay is tuned once per dataset; Appendix~\ref{app:controller} replaces it by one ratio
 target and holds five hidden layers at the two-layer level. Code can be found at
-\url{https://anonymous.4open.science/r/IaC-CL-with-no-offline}
+\url{https://github.com/Hanny658/IaC-Replay-in-SDF}
 
 % ================================================================ 6
 \section{Conclusion}

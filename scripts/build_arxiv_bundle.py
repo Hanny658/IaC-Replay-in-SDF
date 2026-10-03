@@ -5,9 +5,8 @@
 Writes report/arxiv_bundle/ (gitignored) containing main.tex, arxiv.sty, figs/ and
 arxiv_bundle.zip, plus arxiv_metadata.txt with the fields the submission form asks for.
 
-The working copy of preprint.tex is kept anonymous, because the workshop version is under
-double-blind review and the repository feeds an anonymous mirror.  This script produces the
-de-anonymised submission copy: it prepends \\pdfoutput=1 (so arXiv runs pdflatex), fills in
+The working copy of preprint.tex is kept anonymous, because the repository feeds an
+anonymous mirror.  This script produces the de-anonymised submission copy: it prepends \\pdfoutput=1 (so arXiv runs pdflatex), fills in
 the author block, and swaps the anonymous code link for the public one.  Nothing else in the
 document is altered.
 
@@ -47,9 +46,15 @@ def load_private():
 
 # The arXiv abstract field takes at most 1,920 characters, so the form gets this condensed
 # version while the PDF keeps the full one.  Authored by hand; keep it in sync with the paper.
-FORM_ABSTRACT = """Replay-based continual learning almost always consolidates in a dedicated offline phase or by interleaving replayed samples with the input stream, whereas brains also consolidate during wakefulness through local sleep, brief use-dependent off-periods of individual circuits. We ask whether a network trained by local, biologically constrained rules can consolidate with no offline phase at all. An isolation rule confines replay updates to hidden synapses invisible to the current input under k-winner-take-all dynamics, with optimiser state advanced only inside the mask; a refractory rotation rule makes units that have just fired sit out the next competition, widening the consolidable set; a homeostatic pressure and a relative-novelty gate decide when replay bursts fire and when rotation runs. This inverts the usual direction of non-interfering continual learning: the hidden computation on the current input is held invariant (exactly on the proven channels, and for all but 0.3% of waking samples per update elsewhere) while past memories are written into the degrees of freedom the current batch leaves unused. On class-incremental split-MNIST the system reaches 91.6+-0.3% with no offline phase, at or above the best offline-night schedule on two held-out splits, tied with DER++ and above experience replay, ER-ACE, A-GEM and unmasked local replay; in a single pass it leads DER++ (91.8% against 90.1%) while the night falls to 76.9%. The advantage is largest at small buffers and gives way to the backpropagation references at large ones; on split CIFAR-10 the system leads offline rehearsal and experience replay but trails ER-ACE and DER++. Rotation carries most of the gain; isolation adds the invariance guarantee. The mechanism is not tied to the local rule: under the same schedule a backpropagation network with k-WTA hidden layers gains from rotation, and isolation is again free on top of it."""
+FORM_ABSTRACT = """Brains consolidate memories not only in sleep but also through local sleep: brief, use-dependent off-periods of individual circuits during wakefulness. Replay-based continual learning, by contrast, consolidates either in a dedicated offline phase or interleaved with the input stream. We ask whether a network trained by local, biologically constrained rules can consolidate with no offline phase. An isolation rule confines replay updates to hidden synapses invisible to the current input under k-winner-take-all dynamics, with optimiser state advanced only inside the mask; a refractory rotation rule makes units that have just fired sit out the next competition, widening the consolidable set. This inverts the usual direction of non-interfering continual learning: the hidden computation on the current input is held invariant (exactly on the proven channels, and for all but 0.3% of waking samples per update as implemented) while past memories are written into the degrees of freedom the current batch leaves unused. On class-incremental split-MNIST the system reaches 91.6+-0.3% with no offline phase, at or above the best offline night on two held-out splits and above experience replay, ER-ACE, A-GEM and unmasked local replay, each re-tuned under the same micro-batch schedule; against DER++ the comparison splits by protocol, DER++ leading by 1.5 points when the data is seen five times and the system by 1.6 when it is seen once, where the night falls to 76.9%. Measured while the stream runs, isolation holds the served prediction still (0.33% of predictions change per replay update against 4.39% unmasked) and rotation keeps the retention curve flat (a 1.5-point stability gap against about 16), while offline rehearsal carries 38. The advantage is largest at small buffers. Rotation also transfers to a backpropagation network with k-WTA hidden layers, where isolation is again free."""
 
-CATEGORIES = "primary cs.LG; cross-list cs.NE, q-bio.NC"
+CATEGORIES = "primary cs.LG; cross-list cs.NE, stat.ML (as submitted in v1; a replacement keeps them)"
+V2_NOTE = ("v2: the published replay baselines are re-tuned and re-run under the "
+           "paper's own micro-batch schedule, and a new section measures online "
+           "accuracy, the stability gap and the churn of the served prediction while "
+           "the stream runs; the short version of this work was accepted at the "
+           "NeurIPS 2026 Workshop on Continual Learning in the Era of Foundation "
+           "Models and Embodied Agents.")
 LICENSE = "arXiv.org perpetual, non-exclusive license (or CC BY 4.0 if you want reuse)"
 
 
@@ -118,6 +123,7 @@ KEYWORDS
 
 COMMENTS (suggested)
 {pages} pages, {n_fig} figures. Code: {public_code}
+{V2_NOTE}
 
 CATEGORIES (suggested)
 {CATEGORIES}
