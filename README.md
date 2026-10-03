@@ -1,8 +1,10 @@
 # Replay in the Silent Degrees of Freedom
 
 **Continual learning without an offline phase.** Code, results and manuscripts for the paper
-*Replay in the Silent Degrees of Freedom: Continual Learning Without an Offline Phase*
-(under double-blind review).
+*Replay in the Silent Degrees of Freedom: Continual Learning Without an Offline Phase*,
+accepted at the NeurIPS 2026 Workshop on Continual Learning in the Era of Foundation Models
+and Embodied Agents. The full-length version is on arXiv as
+[arXiv:2609.31630](https://arxiv.org/abs/2609.31630).
 
 Replay-based continual learning usually consolidates in one of two ways: in an offline phase
 during which the learner stops acting, or by interleaving replayed samples with the live
