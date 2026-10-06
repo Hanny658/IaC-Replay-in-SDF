@@ -218,10 +218,14 @@ selection; a second tenth, drawn with a different seed and sharing $9\%$ of its 
 the first, replicates the headline rows (Appendix~\ref{app:val}). Results not re-run under
 this protocol are labelled development-phase. Numbers are mean $\pm$ s.d.; the component
 table, the buffer-size axis and the CIFAR-10 comparison carry six seeds, the second split
-and the remaining cells three unless marked otherwise. Runs are deterministic at a fixed
-CPU thread count; because the
-reduction order feeds \kwta's discontinuity, a different thread count is effectively a
-different seed.
+and the remaining cells three unless marked otherwise.
+Every run is a single CPU process on one eight-core AMD Ryzen 7 6800H with $16$ GB of
+memory and no GPU, under PyTorch 2.13 (CPU build), NumPy 2.5 and Python 3.13. Runs are
+deterministic at a fixed CPU thread count; because the reduction order feeds \kwta's
+discontinuity, a different thread count is effectively a different seed. Of the $927$ runs
+behind the held-out numbers, $851$ were given one OpenMP thread, $40$ were given four and
+$36$ did not record the setting; several ran in parallel on the eight cores, and their
+wall-clock totals $121$ hours at a median of $7.2$ minutes per run.
 A third regime uses a frozen V1-like feature front-end for CIFAR-10: $256$ normalised random
 $6{\times}6{\times}3$ patches sampled from the training images act as fixed filters (stride $2$,
 rectification against the per-filter mean response, quadrant average pooling; 1024-D, linear

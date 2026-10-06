@@ -321,24 +321,27 @@ protocol, $32{\times}32$ luminance), each with five epochs per task and, as the 
 protocol, one epoch per task; each with its i.i.d.\ counterpart. Architecture
 $d$--$512$--$256$--$C$, \kwta{} $10\%$, waking batches of $16$, one replay micro-batch of
 $16$ per waking batch, buffer $K{=}1000$. Baselines: the offline ``night'' on the same
-learner ($20$ replay batches of $256$ at $3\times$ learning rate after each waking epoch, the
-best offline schedule in our sweep) and on its preferred narrower core; interleaved replay for
-the local learner without the mask; and, under backprop with the same buffer, experience
+learner and on its preferred narrower core, at the best offline schedule in our sweep
+($20$ replay batches of $256$ at $3\times$ learning rate after each waking epoch);
+interleaved replay for the local learner without the mask; and, under backprop with the same buffer, experience
 replay (BP+ER), DER++ \citep{buzzega2020}, ER-ACE \citep{caccia2022} and A-GEM
 \citep{chaudhry2019}, each at its best width and loss. To test the mechanism off the local
 learner, the same schedule also runs on a backprop MLP of the same width with \kwta{} hidden
-layers (Table~\ref{tab:bpk}), with Adam's moments confined to the mask as the velocity is
-here and its learning rate selected on the development split. Six seeds on the reported
+layers (Table~\ref{tab:bpk}), with Adam's moments confined to the mask and its learning
+rate selected on the development split. Six seeds on the reported
 split and three on the second, mean $\pm$ s.d. Configurations were selected on the official
 test splits, which served as the development set, and then frozen; every number reported in
 the main text re-trains the frozen configuration with a stratified tenth of the training data
-removed from the stream and evaluates on that tenth, which took part in no selection (during
-development it was part of the training stream and never evaluated on). A second tenth drawn
+removed from the stream and evaluates on that tenth, which took part in no selection. A second tenth drawn
 with a different seed replicates the headline rows (Appendix~\ref{app:val}). Forgetting $F$
 is the mean drop of each earlier task's accuracy from its own end to the end of training.
 Evaluation runs with the suppression mask off (\kwta{} only), so test order and batch size
 cannot affect it. Details of the sweeps and of the cost accounting are in
 Appendix~\ref{app:cost}.
+
+\paragraph{Environment.} Every run is a single CPU process on one eight-core AMD Ryzen 7
+6800H with $16$ GB of memory and no GPU, under PyTorch 2.13 (CPU build) and Python 3.13,
+deterministic at a fixed thread count; threads and compute in Appendix~\ref{app:cost}.
 
 % ================================================================ 4
 \section{Results}
@@ -518,13 +521,13 @@ published baselines to the micro-batch schedule is worth $2.0$ points to ER and 
 DER++ and costs ER-ACE $0.5$, so adding \kwta{} is what carries the rest of ER's distance to
 $91.7$, and DER++ at $93.1\pm0.6$ is the strongest cell we measured on this protocol.
 
-\begin{table}[t]
-\centering\footnotesize
+\begin{table}[tb]
+\centering\footnotesize\renewcommand{\arraystretch}{0.95}
 \caption{\textbf{Backprop learners under our schedule} (waking batches of $16$ with one
 $16$-sample replay micro-batch each, $K{=}1000$; held-out split, six seeds; learning rate
-re-selected on the development split for every row). Upper block: \kwta{} hidden layers at
-the same $10\%$ fraction. Lower block: the published baselines of Table~\ref{tab:ablation},
-unchanged except for the schedule.}
+re-selected on the development split per row). Upper block: \kwta{} hidden layers at the
+same $10\%$ fraction; lower block: the published baselines of Table~\ref{tab:ablation} under
+this schedule.}
 \label{tab:bpk}
 \begin{tabular}{@{}lccc@{}}
 \toprule
@@ -564,13 +567,12 @@ unit is silent at every position and every token, which asks for channel-level o
 neuron-level sparsity and for normalisation that does not couple the units \kwta{} selects.
 Top-$k$ routed mixture-of-experts layers expose, per token, the experts a token leaves
 silent; whether the routes of a whole batch leave enough experts idle is a measurement, since
-load balancing pushes against it. We treat the biology as analogy, not as mechanistic
-equivalence; the refractory rule mirrors the ON/OFF finding of \citet{driessen2026}, and the
-dissociation of triggers in Appendix~\ref{app:budget} is a testable prediction.
+load balancing pushes against it. The refractory rule mirrors the ON/OFF finding of
+\citet{driessen2026}, and the dissociation of triggers in Appendix~\ref{app:budget} is a
+testable prediction.
 
-\paragraph{Limitations.} All results are at MLP scale on MNIST and CIFAR-10, with six seeds
-on held-out training data and three on a second held-out split. Two caveats bound how the
-margins should be read. First, Table~\ref{tab:ablation} compares across schedules, and the
+\paragraph{Limitations.} All results are at MLP scale on MNIST and CIFAR-10. Two caveats
+bound how the margins should be read. First, Table~\ref{tab:ablation} compares across schedules, and the
 schedule is worth up to two points on its own, so the within-schedule reading is
 Table~\ref{tab:bpk}: there the system keeps its lead over ER and ER-ACE, loses $1.5$ points
 to DER++ with five epochs per task and takes $1.6$ back in a single pass. Second, the
@@ -581,7 +583,7 @@ offline night is $2.6$ points on the first split and $0.3$ on the second, and on
 CIFAR-10 ER-ACE and DER++ lead by two to three points under their own protocol. Rotation
 keeps a static price of $1.3$ points on the local learner and $0.5$ to $0.9$ on the backprop
 one, and the system makes $35\times$ the night's updates at $6\times$ its wall-clock, in an
-implementation that materialises a mask that is an outer product of two indicator vectors.
+implementation that materialises a mask that is an outer product.
 The decay is tuned once per dataset; Appendix~\ref{app:controller} replaces it by one ratio
 target and holds five hidden layers at the two-layer level. Code can be found at
 \url{https://github.com/Hanny658/IaC-Replay-in-SDF}
@@ -591,18 +593,17 @@ target and holds five hidden layers at the two-layer level. Code can be found at
 \label{sec:conclusion}
 
 Consolidation does not require an offline phase. Replay written into the degrees of freedom
-that the current batch leaves unused holds the hidden computation on that batch invariant,
-and the resulting learner matches or exceeds the best offline rehearsal schedule we could
-tune while replaying about twice its samples. The two ingredients divide the work. Rotation
-supplies the accuracy and the flat retention curve, and it is the part that transfers to a
-backprop learner. Isolation supplies the guarantee, at no cost on top of rotation, and it is
-what keeps the served prediction still, changing it an order of magnitude less often than
-unmasked replay. Against baselines re-tuned under the same schedule the picture splits by
-protocol: DER++ leads by $1.5$ points when the data is seen five times, and the system leads
-by $1.6$ when it is seen once, the regime the construction was built for. What it asks of an
-architecture is modest and checkable: a batch must leave most units silent, and the replay
-update must be maskable synapse by synapse. Whether that survives the batch sizes and the
-weight sharing of convolutional and attention stacks is the measurement we would make next.
+the current batch leaves unused holds the hidden computation on that batch invariant, and the
+learner that results matches or exceeds the best offline rehearsal we could tune, at about
+twice its replay samples. The two ingredients divide the work: rotation supplies the accuracy
+and the flat retention curve, and transfers to a backprop learner; isolation supplies the
+guarantee at no cost on top of rotation, and keeps the served prediction still, changing it an
+order of magnitude less often than unmasked replay. Against baselines re-tuned under the same
+schedule the picture splits by protocol, DER++ leading by $1.5$ points when the data is seen
+five times and the system by $1.6$ when it is seen once, the regime it was built for. What it
+asks of an architecture is modest and checkable: most units silent on a batch, and a replay
+update maskable synapse by synapse. Whether that survives convolutional and attention stacks
+is the next measurement.
 
 \clearpage
 \begin{ack}
@@ -768,8 +769,11 @@ postsynaptic suppressed & $s^\ell_i=1$ & for any magnitude & Cor.~\ref{cor:refr}
 Split CIFAR-10 uses $32{\times}32$ luminance so that distance-dependent wiring keeps its
 image geometry. The local learner uses $80\%$ excitatory units and $30\%$ distance-dependent
 connectivity; the buffer uses reservoir writing; the narrow night reference uses a
-$256$--$128$ core, its preferred width in our sweeps. Runs are deterministic at a fixed CPU
-thread count.
+$256$--$128$ core, its preferred width in our sweeps. Of the $927$ runs behind the held-out
+numbers, $851$ were given one OpenMP thread, $40$ were given four and $36$ did not record
+the setting; several ran in parallel on the eight cores. Their wall-clock totals $121$
+hours, a median of $7.2$ minutes per run, and the whole project as stored comes to $341$
+single-threaded hours over $3{,}073$ runs.
 
 \paragraph{Baseline tuning.} Selection everywhere was sequential accuracy at $K{=}1000$ on
 the official test split (the development set), with the static axis reported alongside; the
